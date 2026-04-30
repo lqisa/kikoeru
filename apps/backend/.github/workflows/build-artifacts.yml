@@ -1,0 +1,183 @@
+name: Build artifacts
+
+on:
+  push:
+    branches-ignore:
+      - "dependabot/**"
+    tags:
+      - v*
+  workflow_dispatch:
+
+jobs:
+  build-front-end:
+    runs-on: ubuntu-latest
+    name: Build front end PWA from source
+    steps:
+      - name: Check out latest front end
+        uses: actions/checkout@v6
+        with:
+          repository: lqisa/kikoeru-quasar
+          ref: unstable
+
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: npm install
+      - run: npx quasar build && npx quasar build -m pwa
+
+      - name: "Upload PWA"
+        uses: actions/upload-artifact@v7
+        with:
+          name: PWA-unstable
+          path: dist/pwa
+          if-no-files-found: error
+
+      - name: "Upload SPA"
+        uses: actions/upload-artifact@v7
+        with:
+          name: SPA-unstable
+          path: dist/spa
+          if-no-files-found: error
+
+  build:
+    needs: build-front-end
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            node_version: 24
+            architecture: x64
+            pkg_target: node24-win-x64
+            archive_name_prefix: kikoeru-win-x64
+          - os: ubuntu-latest
+            node_version: 24
+            architecture: x64
+            pkg_target: node24-linux-arm64
+            archive_name_prefix: kikoeru-linux-arm64
+
+    name: Node ${{ matrix.node_version }} - ${{ matrix.architecture }} on ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node_version }}
+          architecture: ${{ matrix.architecture }}
+
+      - run: npm install
+
+      - name: check node-sqlite3 bindings
+        run: echo $(ls node_modules/sqlite3/build/Release)
+
+      - name: Get branch or tag name
+        id: source_name
+        run: echo "SOURCE_NAME=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+
+      - name: Download front-end artifact (PWA)
+        uses: actions/download-artifact@v7
+        with:
+          name: PWA-unstable
+          path: dist
+
+      - name: Check front-end artifacts
+        run: ls -al dist/
+
+      - name: Package to executables
+        run: npx pkg package.json -t ${pkg_target} --out-path package
+        env:
+          pkg_target: ${{ matrix.pkg_target }}
+
+      - name: Create archive
+        run: |
+          mkdir ${archive_name}
+          cp package/* ${archive_name}/
+        env:
+          archive_name: ${{ matrix.archive_name_prefix }}-${{ steps.source_name.outputs.SOURCE_NAME }}
+
+      - name: "Prepare release archive"
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.archive_name_prefix }}-${{ steps.source_name.outputs.SOURCE_NAME }}
+          path: ${{ matrix.archive_name_prefix }}-${{ steps.source_name.outputs.SOURCE_NAME }}
+          if-no-files-found: error
+
+  test-pkg-archive:
+    runs-on: ${{ matrix.os }}
+    name: Test pkg release archives on ${{ matrix.os }}
+    needs: [build]
+
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            archive_name_prefix: kikoeru-linux-arm64
+
+          - os: windows-latest
+            archive_name_prefix: kikoeru-win-x64
+
+    steps:
+      - name: Get branch or tag name
+        id: source_name
+        run: echo "SOURCE_NAME=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ matrix.archive_name_prefix }}-${{ steps.source_name.outputs.SOURCE_NAME }}
+
+      - name: List files
+        run: ls -al .
+
+      - name: Test pkg binary on Windows
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          $PSVersionTable
+          Start-Job { ./kikoeru-express.exe }
+          sleep 5 &&
+          Get-Job | Receive-Job
+          sleep 5 &&
+          curl --fail -I http://localhost:8888/
+          Get-Job | Stop-Job
+          Get-job | Remove-Job
+
+      - name: Skip run on linux/arm64 archive
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: |
+          echo "linux/arm64 archive build is available; runtime test requires arm64 runner."
+
+  publish:
+    runs-on: ubuntu-latest
+    name: Prepare release draft
+    needs: [test-pkg-archive]
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: Packup artifacts
+        run: cd artifacts && for i in */; do zip -r "${i%/}.zip" "$i"; done
+
+      - name: List artifacts
+        run: ls -al artifacts/
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: artifacts/kikoeru-*
