@@ -1,0 +1,11 @@
+# https://pnpm.io/settings
+shamefullyHoist: true
+
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - esbuild
+
+allowBuilds:
+  '@parcel/watcher': true
+  core-js: true
+  esbuild: true
