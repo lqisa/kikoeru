@@ -1,12 +1,23 @@
 <template>
-  <div class="q-ma-md " style="">
+  <div class="q-ma-md" style="">
     <q-breadcrumbs gutter="xs" v-if="path.length">
-      <q-breadcrumbs-el   >
-        <q-btn no-caps flat dense size="md" icon="folder" style="height: 30px;" @click="path = []">ROOT</q-btn>
+      <q-breadcrumbs-el>
+        <q-btn no-caps flat dense size="md" icon="folder" style="height: 30px" @click="path = []"
+          >ROOT</q-btn
+        >
       </q-breadcrumbs-el>
-      
-      <q-breadcrumbs-el v-for="(folderName, index) in path"  :key="index"  class="cursor-pointer" >
-        <q-btn no-caps flat dense size="md" icon="folder" style="height: 30px;" @click="onClickBreadcrumb(index)">{{folderName}}</q-btn>
+
+      <q-breadcrumbs-el v-for="(folderName, index) in path" :key="index" class="cursor-pointer">
+        <q-btn
+          no-caps
+          flat
+          dense
+          size="md"
+          icon="folder"
+          style="height: 30px"
+          @click="onClickBreadcrumb(index)"
+          >{{ folderName }}</q-btn
+        >
       </q-breadcrumbs-el>
     </q-breadcrumbs>
 
@@ -27,17 +38,31 @@
             <q-icon size="34px" v-else-if="item.type === 'text'" color="info" name="description" />
             <q-icon size="34px" v-else-if="item.type === 'image'" color="orange" name="photo" />
             <q-icon size="34px" v-else-if="item.type === 'other'" color="info" name="description" />
-            <q-btn v-else round dense color="primary" :icon="playIcon(item.hash)" @click="onClickPlayButton(item.hash)" />
+            <q-btn
+              v-else
+              round
+              dense
+              color="primary"
+              :icon="playIcon(item.hash)"
+              @click="onClickPlayButton(item.hash)"
+            />
           </q-item-section>
 
           <q-item-section>
             <q-item-label lines="2">{{ item.title }}</q-item-label>
-            <q-item-label v-if="item.children" caption lines="1">{{ `${item.children.length} 项目` }}</q-item-label>
+            <q-item-label v-if="item.children" caption lines="1">{{
+              `${item.children.length} 项目`
+            }}</q-item-label>
           </q-item-section>
 
-          <!-- 上下文菜单 -->
+          <!-- 上下文菜�?-->
           <q-menu
-            v-if="item.type === 'audio' || item.type === 'text' || item.type === 'image' || item.type === 'other'"
+            v-if="
+              item.type === 'audio' ||
+              item.type === 'text' ||
+              item.type === 'image' ||
+              item.type === 'other'
+            "
             touch-position
             context-menu
             auto-close
@@ -64,138 +89,125 @@
   </div>
 </template>
 
-<script>
-import { mapState, mapGetters } from 'vuex'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue';
+import { useQuasar } from 'quasar';
+import { useAudioPlayerStore } from '../stores/audioPlayer';
+import type { TreeItem, AudioTrack } from '../types';
 
-export default {
-  name: 'WorkTree',
+const props = defineProps<{ tree: TreeItem[] }>();
+const $q = useQuasar();
+const store = useAudioPlayerStore();
 
-  data() {
-    return {
-      path: []
-    }
-  },
+const path = ref<string[]>([]);
 
-  props: {
-    tree: {
-      type: Array,
-      required: true,
-    },
-  },
+const getToken = (): string => String($q.localStorage.getItem('jwt-token') || '');
 
-  watch: {
-    tree () {
-      this.initPath()
-    }
-  },
-
-  computed: {
-    fatherFolder () {
-      let fatherFolder = this.tree.concat()
-      this.path.forEach(folderName => {
-        fatherFolder = fatherFolder.find(item => item.type === 'folder' && item.title === folderName).children
-      })
-
-      return fatherFolder
-    },
-
-    queue () {
-      const queue = []
-      this.fatherFolder.forEach(item => {
-        if (item.type === 'audio') {
-          queue.push(item)
-        }
-      })
-
-      return queue
-    },
-
-    ...mapState('AudioPlayer', [
-      'playing'
-    ]),
-
-    ...mapGetters('AudioPlayer', [
-      'currentPlayingFile'
-    ])
-  },
-
-  methods: {
-    playIcon (hash) {
-      return this.playing && this.currentPlayingFile.hash === hash ? "pause" : "play_arrow"            
-    },
-
-    initPath () {
-      const initialPath = []
-      let fatherFolder = this.tree.concat()
-      while (fatherFolder.length === 1) {
-        if (fatherFolder[0].type === 'audio') {
-          break
-        }
-        initialPath.push(fatherFolder[0].title)
-        fatherFolder = fatherFolder[0].children
-      }
-      this.path = initialPath
-    },
-    
-    onClickBreadcrumb (index) {
-      this.path = this.path.slice(0, index+1)
-    },
-
-    onClickItem (item) {
-      if (item.type === 'folder') {
-        this.path.push(item.title);
-      } else if (item.type === 'text' || item.type === 'image') {
-        this.openFile(item);
-      } else if (item.type === 'other') {
-        this.download(item);
-      } else if (this.currentPlayingFile.hash !== item.hash) {
-        this.$store.commit('AudioPlayer/SET_QUEUE', {
-          queue: this.queue.concat(),
-          index: this.queue.findIndex(file => file.hash === item.hash),
-          resetPlaying: true
-        })
-      }
-    },
-
-    onClickPlayButton (hash) {
-      if (this.currentPlayingFile.hash === hash) {
-        this.$store.commit('AudioPlayer/TOGGLE_PLAYING')
-      } else {
-        this.$store.commit('AudioPlayer/SET_QUEUE', {
-          queue: this.queue.concat(),
-          index: this.queue.findIndex(file => file.hash === hash),
-          resetPlaying: true
-        })
-      }
-    },
-
-    addToQueue (file) {
-      this.$store.commit('AudioPlayer/ADD_TO_QUEUE', file)
-    },
-
-    playNext (file) {
-      this.$store.commit('AudioPlayer/PLAY_NEXT', file)
-    },
-
-    download (file) {
-      const token = this.$q.localStorage.getItem('jwt-token') || '';
-      // Fallback to old API for an old backend 
-      const url = file.mediaDownloadUrl ? `${file.mediaDownloadUrl}?token=${token}` : `/api/media/download/${file.hash}?token=${token}`;
-      const link = document.createElement('a');
-      link.href = url;
-      link.target="_blank";
-      link.click();
-    },
-
-    openFile (file) {
-      const token = this.$q.localStorage.getItem('jwt-token') || '';
-      // Fallback to old API for an old backend 
-      const url = file.mediaStreamUrl ? `${file.mediaStreamUrl}?token=${token}` : `/api/media/stream/${file.hash}?token=${token}`;
-      const link = document.createElement('a');
-      link.href = url;
-      link.target="_blank";
-      link.click();
-    }
+const fatherFolder = computed(() => {
+  let folder: TreeItem[] = props.tree.concat();
+  for (const folderName of path.value) {
+    const found = folder.find((item) => item.type === 'folder' && item.title === folderName);
+    folder = (found?.children as TreeItem[]) || [];
   }
-}
+  return folder;
+});
+
+const queue = computed(() => fatherFolder.value.filter((item) => item.type === 'audio'));
+
+const playing = computed(() => store.playing);
+const currentPlayingFile = computed(() => store.currentPlayingFile);
+
+const initPath = () => {
+  const initialPath: string[] = [];
+  let folder: TreeItem[] = props.tree.concat();
+  while (folder.length === 1) {
+    if (folder[0]?.type === 'audio') break;
+    initialPath.push(folder[0]!.title);
+    folder = (folder[0]!.children as TreeItem[]) || [];
+  }
+  path.value = initialPath;
+};
+
+watch(
+  () => props.tree,
+  () => initPath(),
+);
+onMounted(() => initPath());
+
+const playIcon = (hash?: string) =>
+  playing.value && currentPlayingFile.value.hash === hash ? 'pause' : 'play_arrow';
+
+const onClickBreadcrumb = (index: number) => {
+  path.value = path.value.slice(0, index + 1);
+};
+
+const onClickItem = (item: TreeItem) => {
+  if (item.type === 'folder') {
+    path.value.push(item.title);
+  } else if (item.type === 'text' || item.type === 'image') {
+    openFile(item);
+  } else if (item.type === 'other') {
+    download(item);
+  } else if (currentPlayingFile.value.hash !== item.hash) {
+    store.SET_QUEUE({
+      queue: queue.value.concat(),
+      index: queue.value.findIndex((file) => file.hash === item.hash),
+      resetPlaying: true,
+    });
+  }
+};
+
+const onClickPlayButton = (hash?: string) => {
+  if (currentPlayingFile.value.hash === hash) {
+    store.TOGGLE_PLAYING();
+  } else {
+    store.SET_QUEUE({
+      queue: queue.value.concat(),
+      index: queue.value.findIndex((file) => file.hash === hash),
+      resetPlaying: true,
+    });
+  }
+};
+
+const addToQueue = (file: TreeItem) => {
+  const audioTrack: AudioTrack = {
+    hash: file.hash || null,
+    title: file.title,
+    mediaStreamUrl: file.mediaStreamUrl,
+    workTitle: file.workTitle || null,
+  };
+  store.ADD_TO_QUEUE(audioTrack);
+};
+
+const playNext = (file: TreeItem) => {
+  const audioTrack: AudioTrack = {
+    hash: file.hash || null,
+    title: file.title,
+    mediaStreamUrl: file.mediaStreamUrl,
+    workTitle: file.workTitle || null,
+  };
+  store.PLAY_NEXT(audioTrack);
+};
+
+const download = (file: TreeItem) => {
+  const token = getToken();
+  const url = file.mediaDownloadUrl
+    ? `${file.mediaDownloadUrl}?token=${token}`
+    : `/api/media/download/${file.hash}?token=${token}`;
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.click();
+};
+
+const openFile = (file: TreeItem) => {
+  const token = getToken();
+  const url = file.mediaStreamUrl
+    ? `${file.mediaStreamUrl}?token=${token}`
+    : `/api/media/stream/${file.hash}?token=${token}`;
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.click();
+};
 </script>

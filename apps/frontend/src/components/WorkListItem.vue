@@ -1,8 +1,8 @@
 <template>
-  <q-item clickable :to="`/work/${metadata.id}`" class="bg-white" style="padding: 5px;">
-    <q-item-section avatar style="padding: 0px 5px 0px 0px;">
+  <q-item clickable :to="`/work/${metadata.id}`" class="bg-white" style="padding: 5px">
+    <q-item-section avatar style="padding: 0px 5px 0px 0px">
       <router-link :to="`/work/${metadata.id}`">
-        <q-img transition="fade" :src="samCoverUrl" style="height: 60px; width: 60px;" />
+        <q-img transition="fade" :src="samCoverUrl" style="height: 60px; width: 60px" />
       </router-link>
     </q-item-section>
 
@@ -24,7 +24,7 @@
           <router-link
             v-for="(va, index) in metadata.vas"
             :to="`/works?vaId=${va.id}`"
-            :key=index
+            :key="index"
             class="col-auto text-primary"
           >
             {{ va.name }}
@@ -32,12 +32,12 @@
         </div>
       </q-item-label>
 
-      <q-item-label v-if="showLabel && $q.screen.width> 700">
+      <q-item-label v-if="showLabel && $q.screen.width > 700">
         <div class="row q-gutter-x-sm q-gutter-y-xs">
           <router-link
             v-for="(tag, index) in metadata.tags"
             :to="`/works?tagId=${tag.id}`"
-            :key=index
+            :key="index"
             class="col-auto text-grey"
           >
             {{ tag.name }}
@@ -45,33 +45,25 @@
         </div>
       </q-item-label>
     </q-item-section>
-  </q-item>   
+  </q-item>
 </template>
 
-<script>
-// import WorkDetails from 'components/WorkDetails.vue'
-// import CoverSFW from 'components/CoverSFW.vue'
+<script setup lang="ts">
+import { computed } from 'vue';
+import { useQuasar } from 'quasar';
 
-export default {
-  name: 'WorkListItem',
-
-  props: {
-    metadata: {
-      type: Object,
-      required: true
-    },
-    showLabel: {
-      type: Boolean,
-      default: true
-    },
-  },
-
-  computed: {
-    samCoverUrl () {
-      // 从 LocalStorage 中读取 token
-      const token = this.$q.localStorage.getItem('jwt-token') || ''
-      return this.metadata.id ? `/api/cover/${this.metadata.id}?type=sam&token=${token}` : ""
-    },
-  }
+interface Props {
+  metadata: Record<string, any>;
+  showLabel?: boolean;
 }
+
+const props = withDefaults(defineProps<Props>(), { showLabel: true });
+const $q = useQuasar();
+
+const getToken = (): string => String($q.localStorage.getItem('jwt-token') || '');
+
+const samCoverUrl = computed(() => {
+  const token = getToken();
+  return props.metadata.id ? `/api/cover/${props.metadata.id}?type=sam&token=${token}` : '';
+});
 </script>

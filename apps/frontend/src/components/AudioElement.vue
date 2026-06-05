@@ -11,297 +11,293 @@
     @waiting="onWaiting()"
     @pause="onPause()"
   >
-    <audio crossorigin="anonymous" >
+    <audio crossorigin="anonymous">
       <source v-if="source" :src="source" />
     </audio>
   </vue-plyr>
 </template>
 
-<script>
-import Lyric from 'lrc-file-parser'
-import { mapState, mapGetters, mapMutations } from 'vuex'
-import NotifyMixin from '../mixins/Notification.js'
+<script setup lang="ts">
+import { computed, ref, watch, onMounted, inject } from 'vue';
+import { useQuasar } from 'quasar';
+import Lyric from 'lrc-file-parser';
+import { useAudioPlayerStore } from '../stores/audioPlayer';
+import { useNotification } from '../composables/useNotification';
 
-export default {
-  name: 'AudioElement',
+interface PlyrPlayer {
+  play: () => void;
+  pause: () => void;
+  duration: number;
+  currentTime: number;
+  volume: number;
+  muted: boolean;
+  media: HTMLMediaElement;
+  rewind: (time: number) => void;
+  forward: (time: number) => void;
+}
 
-  mixins: [NotifyMixin],
+interface PlyrComponent {
+  player: PlyrPlayer;
+}
 
-  data() {
-    return {
-      lrcObj: null,
-      lrcAvailable: false,
-    }
-  },
+interface AxiosInstance {
+  get: (url: string) => Promise<{ data: unknown }>;
+}
 
-  computed: {
-    player () {
-      return this.$refs.plyr.player
-    },
+const $q = useQuasar();
+const $axios = inject<AxiosInstance>('axios');
+const store = useAudioPlayerStore();
+const { showErrNotif } = useNotification();
 
-    source () {
-      // 从 LocalStorage 中读取 token
-      const token = this.$q.localStorage.getItem('jwt-token') || ''
-      // New API
-      if (this.currentPlayingFile.mediaStreamUrl) {
-        return `${this.currentPlayingFile.mediaStreamUrl}?token=${token}`
-      } else if (this.currentPlayingFile.hash) {
-        // Fallback to be compatible with old backend
-        return `/api/media/stream/${this.currentPlayingFile.hash}?token=${token}`
+// Refs
+const plyr = ref<PlyrComponent>();
+const lrcObj = ref<{
+  setLyric: (lyric: string) => void;
+  play: (time: number) => void;
+  pause: () => void;
+} | null>(null);
+const lrcAvailable = ref(false);
+
+// Computed
+const player = computed(() => plyr.value?.player);
+
+const getToken = (): string => {
+  return String($q.localStorage.getItem('jwt-token') || '');
+};
+
+const source = computed(() => {
+  const token = getToken();
+  if (store.currentPlayingFile.mediaStreamUrl) {
+    return `${store.currentPlayingFile.mediaStreamUrl}?token=${token}`;
+  } else if (store.currentPlayingFile.hash) {
+    return `/api/media/stream/${store.currentPlayingFile.hash}?token=${token}`;
+  } else {
+    return '';
+  }
+});
+
+// Watchers
+watch(
+  () => store.playing,
+  (flag) => {
+    if (player.value?.duration) {
+      if (flag) {
+        player.value?.play();
       } else {
-        return ""
-      }
-    },
-
-    ...mapState('AudioPlayer', [
-      'playing',
-      'queue',
-      'queueIndex',
-      'playMode',
-      'muted',
-      'volume',
-      'sleepTime',
-      'sleepMode',
-      'rewindSeekTime',
-      'forwardSeekTime',
-      'rewindSeekMode',
-      'forwardSeekMode'
-    ]),
-
-    ...mapGetters('AudioPlayer', [
-      'currentPlayingFile'
-    ])
-  },
-
-  watch: {
-    playing (flag) {
-      if (this.player.duration) {
-        // 缓冲至可播放状态
-        flag ? this.player.play() : this.player.pause()
-      }
-      // this.playLrc(flag);
-    },
-
-    // watch source -> media.load() -> canPlay -> player.play()
-    source (url) {
-      if (url) {
-        // 加载新音频/视频文件
-        this.player.media.load();
-        this.loadLrcFile();
-      }
-    },
-
-    muted (flag) {
-      // 切换静音状态
-      this.player.muted = flag
-    },
-
-    volume (val) {
-      // 屏蔽非法数值
-      if (val < 0 || val > 1) {
-        return
-      }
-
-      // 调节音量
-      this.player.volume = val
-    },
-    rewindSeekMode(rewind) {
-      if (rewind) {
-        this.player.rewind(this.rewindSeekTime);
-        this.SET_REWIND_SEEK_MODE(false);
-      }
-    },
-    forwardSeekMode(forward) {
-      if (forward) {
-        this.player.forward(this.forwardSeekTime);
-        this.SET_FORWARD_SEEK_MODE(false);
+        player.value?.pause();
       }
     }
   },
+);
 
-  methods: {
-    /**
-     * 当 外部暂停（线控暂停、软件切换）、用户控制暂停、seek 时会触发本事件
-     */
-    onPause() {
-      // console.log('onPause')
-      this.playLrc(false)
-      this.PAUSE()
-    },
-    /**
-     * 当播放器真正开始播放时会触发本事件
-     */
-    onPlaying() {
-      // console.log('playing')
-      this.playLrc(true)
-      this.PLAY()
-    },
-    /**
-     * 当播放器缓冲区空，被迫暂停加载时会触发本事件
-     */
-    onWaiting() {
-      // console.log('waiting')
-      this.playLrc(false)
-      this.PLAY()
-    },
-    ...mapMutations('AudioPlayer', [
-      'SET_DURATION',
-      'SET_CURRENT_TIME',
-      'PAUSE',
-      'PLAY',
-      'SET_TRACK',
-      'NEXT_TRACK',
-      'SET_CURRENT_LYRIC',
-      'SET_VOLUME',
-      'CLEAR_SLEEP_MODE',
-      'SET_REWIND_SEEK_MODE',
-      'SET_FORWARD_SEEK_MODE'
-    ]),
+watch(source, (url) => {
+  if (url) {
+    player.value?.media.load();
+    loadLrcFile();
+  }
+});
 
-    onCanplay () {
-      // 缓冲至可播放状态时触发 (只有缓冲至可播放状态, 才能获取媒体文件的播放时长)
-      this.SET_DURATION(this.player.duration)
-
-      // 播放
-      if (this.playing && this.player.currentTime !== this.player.duration) {
-        this.player.play()
-      }
-    },
-
-    onTimeupdate () {
-      // 当目前的播放位置已更改时触发
-      this.SET_CURRENT_TIME(this.player.currentTime)
-      if (this.sleepMode && this.sleepTime) {
-        const currentTime = new Date()
-        const currentHourStr = currentTime.getHours().toString().padStart(2, '0')
-        const currentMinuteStr = currentTime.getMinutes().toString().padStart(2, '0')
-        const sleepHourStr = this.sleepTime.match(/\d+/g)[0]
-        const sleepMinuteStr = this.sleepTime.match(/\d+/g)[1]
-        if (currentHourStr === sleepHourStr && currentMinuteStr === sleepMinuteStr) {
-          this.PAUSE()
-          this.CLEAR_SLEEP_MODE()
-          // Persist sleep mode settings
-          this.$q.sessionStorage.set('sleepTime', null)
-          this.$q.sessionStorage.set('sleepMode', false)
-        }
-      }
-    },
-
-    seek (seconds) {
-      if (this.player) {
-        this.player.currentTime = seconds
-      }
-    },
-
-    onEnded () {
-      // 当前文件播放结束时触发
-      switch (this.playMode.name) {
-        case "all repeat":
-          // 循环播放
-          if (this.queueIndex === this.queue.length - 1) {
-            this.SET_TRACK(0)
-          } else {
-            this.NEXT_TRACK()
-          }
-          break
-        case "repeat once":
-          // 单曲循环
-          this.player.currentTime = 0
-          this.player.play()
-          this.PLAY()
-          break
-        case "shuffle": {
-          // 随机播放
-          const index = Math.floor(Math.random()*this.queue.length)
-          this.SET_TRACK(index)
-          if (index === this.queueIndex) {
-            this.player.currentTime = 0
-          }
-          break
-        }
-        default:
-          // 顺序播放
-          if (this.queueIndex === this.queue.length - 1) {
-            this.PAUSE()
-          } else {
-            this.NEXT_TRACK()
-          }
-      }
-    },
-
-    onSeeked() {
-      // if (this.lrcAvailable) {
-      //   this.lrcObj.play(this.player.currentTime * 1000);
-      //   if (!this.playing) {
-      //     this.lrcObj.pause();
-      //   }
-      // }
-    },
-
-
-    playLrc (playStatus) {
-      if (this.lrcAvailable) {
-        if (playStatus) {
-          this.lrcObj.play(this.player.currentTime * 1000);
-        } else {
-          this.lrcObj.pause();
-        }
-      }
-    },
-
-    initLrcObj () {
-        this.lrcObj = new Lyric({
-          onPlay: (line, text) => {
-            this.SET_CURRENT_LYRIC(text);
-          },
-        })
-    },
-
-    loadLrcFile () {
-      const token = this.$q.localStorage.getItem('jwt-token') || '';
-      const fileHash = this.queue[this.queueIndex].hash;
-      const url = `/api/media/check-lrc/${fileHash}?token=${token}`;
-
-      this.$axios.get(url)
-        .then((response) => {
-          if (response.data.result) {
-            // 有lrc歌词文件
-            this.lrcAvailable = true;
-            console.log('读入歌词');
-            const lrcUrl = `/api/media/stream/${response.data.hash}?token=${token}`;
-            this.$axios.get(lrcUrl)
-              .then(response => {
-                console.log('歌词读入成功');
-                this.lrcObj.setLyric(response.data);
-                this.lrcObj.play(this.player.currentTime * 1000);
-              });
-          } else {
-            // 无歌词文件
-            this.lrcAvailable = false;
-            this.lrcObj.setLyric('');
-            this.SET_CURRENT_LYRIC('');
-          }
-        })
-        .catch((error) => {
-          if (error.response) {
-            // 请求已发出，但服务器响应的状态码不在 2xx 范围内
-            if (error.response.status !== 401) {
-              this.showErrNotif(error.response.data.error || `${error.response.status} ${error.response.statusText}`);
-            }
-          } else {
-            this.showErrNotif(error.message || error);
-          }
-        })
-    },
+watch(
+  () => store.muted,
+  (flag) => {
+    if (player.value) {
+      player.value.muted = flag;
+    }
   },
+);
 
-  mounted () {
-    // 初始化音量
-    this.SET_VOLUME(this.player.volume);
-    this.initLrcObj();
-    if (this.source) {
-      this.loadLrcFile();
+watch(
+  () => store.volume,
+  (val) => {
+    if (val < 0 || val > 1) {
+      return;
+    }
+    if (player.value) {
+      player.value.volume = val;
+    }
+  },
+);
+
+watch(
+  () => store.rewindSeekMode,
+  (rewind) => {
+    if (rewind && player.value) {
+      player.value.rewind(store.rewindSeekTime);
+      store.SET_REWIND_SEEK_MODE(false);
+    }
+  },
+);
+
+watch(
+  () => store.forwardSeekMode,
+  (forward) => {
+    if (forward && player.value) {
+      player.value.forward(store.forwardSeekTime);
+      store.SET_FORWARD_SEEK_MODE(false);
+    }
+  },
+);
+
+// Methods
+const onPause = () => {
+  playLrc(false);
+  store.PAUSE();
+};
+
+const onPlaying = () => {
+  playLrc(true);
+  store.PLAY();
+};
+
+const onWaiting = () => {
+  playLrc(false);
+  store.PLAY();
+};
+
+const onCanplay = () => {
+  if (!player.value) return;
+  store.SET_DURATION(player.value.duration);
+  if (store.playing && player.value.currentTime !== player.value.duration) {
+    player.value.play();
+  }
+};
+
+const onTimeupdate = () => {
+  if (!player.value) return;
+  store.SET_CURRENT_TIME(player.value.currentTime);
+  if (store.sleepMode && store.sleepTime) {
+    const currentTime = new Date();
+    const currentHourStr = currentTime.getHours().toString().padStart(2, '0');
+    const currentMinuteStr = currentTime.getMinutes().toString().padStart(2, '0');
+    const sleepHourStr = store.sleepTime.match(/\d+/g)?.[0];
+    const sleepMinuteStr = store.sleepTime.match(/\d+/g)?.[1];
+    if (currentHourStr === sleepHourStr && currentMinuteStr === sleepMinuteStr) {
+      store.PAUSE();
+      store.CLEAR_SLEEP_MODE();
+      $q.sessionStorage.set('sleepTime', null);
+      $q.sessionStorage.set('sleepMode', false);
     }
   }
-}
+};
+
+const seek = (seconds: number) => {
+  if (player.value) {
+    player.value.currentTime = seconds;
+  }
+};
+
+const onEnded = () => {
+  switch (store.playMode.name) {
+    case 'all repeat':
+      if (store.queueIndex === store.queue.length - 1) {
+        store.SET_TRACK(0);
+      } else {
+        store.NEXT_TRACK();
+      }
+      break;
+    case 'repeat once':
+      if (player.value) {
+        player.value.currentTime = 0;
+        player.value.play();
+      }
+      store.PLAY();
+      break;
+    case 'shuffle': {
+      const index = Math.floor(Math.random() * store.queue.length);
+      store.SET_TRACK(index);
+      if (index === store.queueIndex && player.value) {
+        player.value.currentTime = 0;
+      }
+      break;
+    }
+    default:
+      if (store.queueIndex === store.queue.length - 1) {
+        store.PAUSE();
+      } else {
+        store.NEXT_TRACK();
+      }
+  }
+};
+
+const onSeeked = () => {
+  // Placeholder for future lyric sync
+};
+
+const playLrc = (playStatus: boolean) => {
+  if (lrcAvailable.value && lrcObj.value && player.value) {
+    if (playStatus) {
+      lrcObj.value.play(player.value.currentTime * 1000);
+    } else {
+      lrcObj.value.pause();
+    }
+  }
+};
+
+const initLrcObj = () => {
+  lrcObj.value = new Lyric({
+    onPlay: (line: number, text: string) => {
+      store.SET_CURRENT_LYRIC(text);
+    },
+  });
+};
+
+const loadLrcFile = () => {
+  const token = getToken();
+  const fileHash = store.queue[store.queueIndex]?.hash;
+  if (!fileHash) return;
+  const url = `/api/media/check-lrc/${fileHash}?token=${token}`;
+
+  void $axios
+    ?.get(url)
+    .then((response) => {
+      const data = response.data as { result?: boolean; hash?: string };
+      if (data.result) {
+        lrcAvailable.value = true;
+        console.log('读入歌词');
+        const lrcUrl = `/api/media/stream/${data.hash}?token=${token}`;
+        void $axios?.get(lrcUrl).then((lrcResponse) => {
+          console.log('歌词读入成功');
+          lrcObj.value?.setLyric(lrcResponse.data as string);
+          if (player.value) {
+            lrcObj.value?.play(player.value.currentTime * 1000);
+          }
+        });
+      } else {
+        lrcAvailable.value = false;
+        lrcObj.value?.setLyric('');
+        store.SET_CURRENT_LYRIC('');
+      }
+    })
+    .catch((error: unknown) => {
+      const err = error as {
+        response?: { status: number; data?: { error?: string }; statusText?: string };
+        message?: string;
+      };
+      if (err.response) {
+        if (err.response.status !== 401) {
+          showErrNotif(
+            err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
+          );
+        }
+      } else {
+        showErrNotif(err.message || 'unknown');
+      }
+    });
+};
+
+// Lifecycle
+onMounted(() => {
+  if (player.value) {
+    store.SET_VOLUME(player.value.volume);
+  }
+  initLrcObj();
+  if (source.value) {
+    loadLrcFile();
+  }
+});
+
+// Expose methods for parent components
+defineExpose({
+  seek,
+});
 </script>

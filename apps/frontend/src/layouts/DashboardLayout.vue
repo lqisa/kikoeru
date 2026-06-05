@@ -10,12 +10,10 @@
     <q-drawer
       v-model="drawer"
       show-if-above
-
       :mini="miniState"
       @mouseover="miniState = false"
       @mouseout="miniState = true"
       mini-to-overlay
-
       :width="200"
       :breakpoint="500"
       bordered
@@ -23,23 +21,20 @@
     >
       <div class="column justify-between fit">
         <q-list padding class="col-auto">
-          <q-item 
+          <q-item
+            v-for="(link, index) in links"
+            :key="index"
             clickable
             v-ripple
             exact
             :to="link.path"
             active-class="text-primary text-weight-bold"
-            v-for="(link, index) in links"
-            :key="index"
             class="col text-subtitle1"
           >
             <q-item-section avatar>
               <q-icon :name="link.icon" />
             </q-item-section>
-
-            <q-item-section>
-              {{link.title}}
-            </q-item-section>
+            <q-item-section>{{ link.title }}</q-item-section>
           </q-item>
         </q-list>
       </div>
@@ -51,79 +46,67 @@
   </q-layout>
 </template>
 
-<script>
-import NotifyMixin from '../mixins/Notification.js'
+<script setup lang="ts">
+import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { LocalStorage } from 'quasar';
+import { useUserStore } from '../stores/user';
+import { useNotification } from '../composables/useNotification';
+import { useSocket } from '../composables/useSocket';
 
-export default {
-  name: 'DashboardLayout',
+const router = useRouter();
+const userStore = useUserStore();
+const { showSuccNotif, showWarnNotif } = useNotification();
+const { registerEvent, setAuthToken, open, close } = useSocket();
 
-  mixins: [NotifyMixin],
+const drawer = ref(false);
+const miniState = ref(true);
 
-  data () {
-    return {
-      drawer: false,
-      miniState: true,
-      links: [
-        {
-          title: '音声库',
-          icon: 'folder',
-          path: '/admin'
-        },
-        {
-          title: '扫描',
-          icon: 'youtube_searched_for',
-          path: '/admin/scanner'
-        },
-        {
-          title: '用户管理',
-          icon: 'person',
-          path: '/admin/usermanage'
-        },
-        {
-          title: '高级设置',
-          icon: 'settings',
-          path: '/admin/advanced'
-        },
-        
-        {
-          title: '回到主页',
-          icon: 'home',
-          path: '/'
-        }
-      ]
-    }
-  },
+const links = [
+  { title: '音声库', icon: 'folder', path: '/admin' },
+  { title: '扫描', icon: 'youtube_searched_for', path: '/admin/scanner' },
+  { title: '用户管理', icon: 'person', path: '/admin/usermanage' },
+  { title: '高级设置', icon: 'settings', path: '/admin/advanced' },
+  { title: '回到主页', icon: 'home', path: '/' },
+] as const;
 
-  sockets: {
-    success (payload) {
-      this.showSuccNotif(payload.message)
-      if (payload.auth) {
-        this.$store.commit('User/INIT', payload.user)
-        this.$store.commit('User/SET_AUTH', payload.auth)
-      }
-    },
-    error (err) {
-      this.showWarnNotif(err.message || err)
-      this.$socket.close()
-      // 验证失败，跳转到登录页面
-      this.$router.push('/login')
-    }
-  },
-
-  created () {
-    // 从 LocalStorage 中读取 token
-    const token = this.$q.localStorage.getItem('jwt-token') || ''
-    this.$socket.io.opts.query.auth_token = token
-    
-    if (!this.$socket.connected) {
-      this.$socket.open()
-    }
-  }
+// Socket.IO event handlers
+interface SocketSuccessPayload {
+  message: string;
+  auth: boolean;
+  user: { name: string; group: string };
 }
-</script>
 
-<style lang="scss" scoped>
-  a {
-    text-decoration:none;
+interface SocketErrorPayload {
+  message?: string;
+}
+
+registerEvent('success', (...args: unknown[]) => {
+  const payload = args[0] as SocketSuccessPayload;
+  showSuccNotif(payload.message);
+  if (payload.auth) {
+    userStore.INIT(payload.user);
+    userStore.SET_AUTH(payload.auth);
   }
-</style>
+});
+
+registerEvent('error', (...args: unknown[]) => {
+  const err = args[0] as SocketErrorPayload | string;
+  const msg = typeof err === 'string' ? err : (err.message ?? String(err));
+  showWarnNotif(msg);
+  close();
+  void router.push('/login');
+});
+
+onMounted(() => {
+  const token = LocalStorage.getItem('jwt-token');
+  if (typeof token === 'string') {
+    setAuthToken(token);
+  }
+
+  const socketState = useSocket().socket;
+  if (!socketState.value.connected) {
+    open();
+  }
+});
+</script>

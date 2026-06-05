@@ -37,7 +37,7 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
       AGE_RATINGS = '年龄指定'
       GENRE = '分类'
       VA = '声优'
-      RELEASE = '贩卖日'
+      RELEASE = '发售日'
       SERIES = '系列名'
   }
 

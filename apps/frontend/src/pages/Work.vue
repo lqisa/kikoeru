@@ -1,78 +1,80 @@
 <template>
   <div>
     <WorkDetails :metadata="metadata" @reset="requestData()" />
-    <!-- <WorkQueue :queue="tracks" :editable="false" /> -->
     <WorkTree :tree="tree" :editable="false" />
   </div>
 </template>
 
-<script>
-import WorkDetails from 'components/WorkDetails.vue'
-// import WorkQueue from 'components/WorkQueue.vue'
-import WorkTree from 'components/WorkTree.vue'
-import NotifyMixin from '../mixins/Notification.js'
+<script setup lang="ts">
+import { ref, watch, onMounted, inject } from 'vue';
+import { useRoute } from 'vue-router';
+import WorkDetails from 'components/WorkDetails.vue';
+import WorkTree from 'components/WorkTree.vue';
+import { useNotification } from '../composables/useNotification';
+import type { WorkMetadata, TreeItem } from '../types';
 
-export default {
-  name: 'Work',
+const route = useRoute();
+const $axios = inject<{
+  get: (url: string) => Promise<{ data: WorkMetadata | TreeItem[] }>;
+}>('axios')!;
+const { showErrNotif } = useNotification();
 
-  mixins: [NotifyMixin],
+const workid = ref(route.params.id);
+const metadata = ref<WorkMetadata>({
+  id: parseInt(route.params.id as string),
+  title: '',
+  circle: { id: 0, name: '' },
+  release: '',
+  rate_average_2dp: 0,
+  rate_count: 0,
+  review_count: 0,
+  price: 0,
+  dl_count: 0,
+  nsfw: false,
+  tags: [],
+  vas: [],
+});
+const tree = ref<TreeItem[]>([]);
 
-  components: {
-    WorkDetails,
-    // WorkQueue,
-    WorkTree
+const requestData = () => {
+  $axios
+    .get(`/api/work/${workid.value}`)
+    .then((response) => {
+      metadata.value = response.data as WorkMetadata;
+    })
+    .catch((error) => {
+      if (error.response) {
+        showErrNotif(
+          error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+        );
+      } else {
+        showErrNotif(error.message || error);
+      }
+    });
+
+  $axios
+    .get(`/api/tracks/${workid.value}`)
+    .then((response) => {
+      tree.value = response.data as TreeItem[];
+    })
+    .catch((error) => {
+      if (error.response) {
+        showErrNotif(
+          error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+        );
+      } else {
+        showErrNotif(error.message || error);
+      }
+    });
+};
+
+watch(
+  () => route.params.id,
+  (to) => {
+    workid.value = to;
+    requestData();
   },
+);
 
-  data () {
-    return {
-      workid: this.$route.params.id,
-      metadata: {
-        id: parseInt(this.$route.params.id),
-        circle: {}
-      },
-      tree: []
-    }
-  },
-
-  watch: {
-    $route (to) {
-      this.workid = to.params.id;
-      this.requestData();
-    }
-  },
-
-  created () {
-    this.requestData()
-  },
-
-  methods: {
-    requestData () {
-      this.$axios.get(`/api/work/${this.workid}`)
-        .then(response => {
-          this.metadata = response.data
-        })
-        .catch((error) => {
-          if (error.response) {
-            // 请求已发出，但服务器响应的状态码不在 2xx 范围内
-            this.showErrNotif(error.response.data.error || `${error.response.status} ${error.response.statusText}`)
-          } else {
-            this.showErrNotif(error.message || error)
-          }
-        })
-
-      this.$axios.get(`/api/tracks/${this.workid}`)
-        .then(response => {
-          this.tree = response.data
-        })
-        .catch((error) => {
-          if (error.response) {
-            // 请求已发出，但服务器响应的状态码不在 2xx 范围内
-            this.showErrNotif(error.response.data.error || `${error.response.status} ${error.response.statusText}`)
-          } else {
-            this.showErrNotif(error.message || error)
-          }
-        })
-    },
-  }
-}
+onMounted(() => requestData());
 </script>
