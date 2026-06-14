@@ -1,7 +1,7 @@
 const path = require('path')
 const { Server } = require('socket.io')
 const jwt = require('jsonwebtoken')
-const child_process = require('child_process')
+const childProcess = require('child_process')
 const { config } = require('./config')
 
 const initSocket = (server) => {
@@ -37,7 +37,7 @@ const initSocket = (server) => {
 
     socket.emit('success', {
       message: '成功登录管理后台.',
-      user: user,
+      user,
       auth: config.auth
     })
 
@@ -51,7 +51,7 @@ const initSocket = (server) => {
 
     socket.on('PERFORM_SCAN', () => {
       if (!scanner) {
-        scanner = child_process.fork(path.join(__dirname, './filesystem/scanner.js'), { silent: false })
+        scanner = childProcess.fork(path.join(__dirname, './filesystem/scanner.js'), { silent: false })
         scanner.on('exit', (code) => {
           scanner = null
           if (code) {
@@ -69,7 +69,7 @@ const initSocket = (server) => {
 
     socket.on('PERFORM_UPDATE', () => {
       if (!scanner) {
-        scanner = child_process.fork(path.join(__dirname, './filesystem/updater.js'), ['--refreshAll'], { silent: false })
+        scanner = childProcess.fork(path.join(__dirname, './filesystem/updater.js'), ['--refreshAll'], { silent: false })
         scanner.on('exit', (code) => {
           scanner = null
           if (code) {

@@ -37,7 +37,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
         if (href) {
           work.circle = {
             id: parseInt(href.substring(href.lastIndexOf('/') + 1)),
-            name: name,
+            name
           };
         }
       });
@@ -46,7 +46,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
         const name = $(this).text().trim();
         work.vas.push({
           id: nameToUUID(name),
-          name: name,
+          name
         });
       });
 
@@ -56,7 +56,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
         if (href) {
           work.tags.push({
             id: parseInt(href.substring(href.lastIndexOf('/') + 1)),
-            name: name,
+            name
           });
         }
       });

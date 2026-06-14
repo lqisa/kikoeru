@@ -200,7 +200,7 @@ async function * getFolderList (rootFolder, current = '', depth = 0, callback = 
 
 /**
  * Deletes a work's cover image from disk.
- * @param {String} rjcode Work RJ code (only the 6 digits, zero-padded).
+ * @param {String} rjcode Work RJ code (only the digits, zero-padded).
  */
 const deleteCoverImageFromDisk = rjcode => new Promise((resolve, reject) => {
   const types = ['main', 'sam', '240x240', '360x360']
@@ -218,7 +218,7 @@ const deleteCoverImageFromDisk = rjcode => new Promise((resolve, reject) => {
 /**
  * Saves cover image to disk.
  * @param {ReadableStream} stream Image data stream.
- * @param {String} rjcode Work RJ code (only the 6 digits, zero-padded).
+ * @param {String} rjcode Work RJ code (only the digits, zero-padded).
  * @param {String} types img type: ('main', 'sam', 'sam@2x', 'sam@3x', '240x240', '360x360').
  */
 const saveCoverImageToDisk = (stream, rjcode, type) => new Promise((resolve, reject) => {

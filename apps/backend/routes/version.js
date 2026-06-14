@@ -10,10 +10,10 @@ const compareVersions = require('compare-versions')
 // Not specific to a user
 // Prevent API throttling
 let lastGitHubCheck = null
-let lastGitHubResponse = {
-  latest_stable: null,
-  latest_release: null,
-  update_available: null
+let lastGitHubResponse = { // eslint-disable-line camelcase
+  latest_stable: null, // eslint-disable-line camelcase
+  latest_release: null, // eslint-disable-line camelcase
+  update_available: null // eslint-disable-line camelcase
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -50,8 +50,8 @@ router.get('/', (req, res, next) => {
     .then(axios.spread((responseStable, responseLatest) => {
       if (responseStable.data && responseLatest.data && responseStable.data.tag_name && responseLatest.data[0].tag_name) {
         const current = pjson.version
-        const latest_stable = responseStable.data.tag_name
-        const latest_release = responseLatest.data[0].tag_name
+        const latest_stable = responseStable.data.tag_name // eslint-disable-line camelcase
+        const latest_release = responseLatest.data[0].tag_name // eslint-disable-line camelcase
         const newVerAvailable = () => {
           if (config.checkBetaUpdate) {
             return compareVersions.compare(latest_release, current, '>')
@@ -60,6 +60,7 @@ router.get('/', (req, res, next) => {
         }
 
         // Side effect
+        /* eslint-disable camelcase */
         lastGitHubResponse = {
           latest_stable,
           latest_release,
@@ -75,6 +76,7 @@ router.get('/', (req, res, next) => {
           lockFileExists: updateLock.isLockFilePresent,
           lockReason: updateLock.isLockFilePresent ? lockReason : null
         })
+        /* eslint-enable camelcase */
       } else {
         // Empty result or no tag
         res.send(throttledResponse)
