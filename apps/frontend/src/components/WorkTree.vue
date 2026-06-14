@@ -37,6 +37,7 @@
             <q-icon size="34px" v-if="item.type === 'folder'" color="amber" name="folder" />
             <q-icon size="34px" v-else-if="item.type === 'text'" color="info" name="description" />
             <q-icon size="34px" v-else-if="item.type === 'image'" color="orange" name="photo" />
+            <q-icon size="34px" v-else-if="item.type === 'video'" color="red" name="movie" />
             <q-icon size="34px" v-else-if="item.type === 'other'" color="info" name="description" />
             <q-btn
               v-else
@@ -55,13 +56,14 @@
             }}</q-item-label>
           </q-item-section>
 
-          <!-- 上下文菜�?-->
+          <!-- 上下文菜单 -->
           <q-menu
             v-if="
               item.type === 'audio' ||
               item.type === 'text' ||
               item.type === 'image' ||
-              item.type === 'other'
+              item.type === 'other' ||
+              item.type === 'video'
             "
             touch-position
             context-menu
@@ -86,6 +88,12 @@
         </q-item>
       </q-list>
     </q-card>
+
+    <VideoPlayer
+      v-model="videoDialog.show"
+      :url="videoDialog.url"
+      :title="videoDialog.title"
+    />
   </div>
 </template>
 
@@ -93,6 +101,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { useQuasar } from 'quasar';
 import { useAudioPlayerStore } from '../stores/audioPlayer';
+import VideoPlayer from './VideoPlayer.vue';
 import type { TreeItem, AudioTrack } from '../types';
 
 const props = defineProps<{ tree: TreeItem[] }>();
@@ -100,6 +109,7 @@ const $q = useQuasar();
 const store = useAudioPlayerStore();
 
 const path = ref<string[]>([]);
+const videoDialog = ref({ show: false, url: '', title: '' });
 
 const getToken = (): string => String($q.localStorage.getItem('jwt-token') || '');
 
@@ -121,9 +131,9 @@ const initPath = () => {
   const initialPath: string[] = [];
   let folder: TreeItem[] = props.tree.concat();
   while (folder.length === 1) {
-    if (folder[0]?.type === 'audio') break;
-    initialPath.push(folder[0]!.title);
-    folder = (folder[0]!.children as TreeItem[]) || [];
+    if (folder[0]?.type !== 'folder') break;
+    initialPath.push(folder[0]?.title);
+    folder = (folder[0]?.children as TreeItem[]) || [];
   }
   path.value = initialPath;
 };
@@ -148,6 +158,8 @@ const onClickItem = (item: TreeItem) => {
     openFile(item);
   } else if (item.type === 'other') {
     download(item);
+  } else if (item.type === 'video') {
+    openVideo(item);
   } else if (currentPlayingFile.value.hash !== item.hash) {
     store.SET_QUEUE({
       queue: queue.value.concat(),
@@ -209,5 +221,13 @@ const openFile = (file: TreeItem) => {
   link.href = url;
   link.target = '_blank';
   link.click();
+};
+
+const openVideo = (file: TreeItem) => {
+  const token = getToken();
+  const url = file.mediaStreamUrl
+    ? `${file.mediaStreamUrl}?token=${token}`
+    : `/api/media/stream/${file.hash}?token=${token}`;
+  videoDialog.value = { show: true, url, title: file.title };
 };
 </script>

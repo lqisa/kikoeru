@@ -74,18 +74,19 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { inject } from 'vue';
 import { useNotification } from '../composables/useNotification';
+import { useApi } from '../composables/useApi';
+import type { WorkMetadata, ReviewSubmitResponse } from '../types';
 
 interface Props {
   workid: number;
-  metadata?: Record<string, unknown>;
+  metadata?: WorkMetadata;
 }
 
-const props = withDefaults(defineProps<Props>(), { metadata: () => ({}) });
+const props = defineProps<Props>();
 const emit = defineEmits<{ (e: 'closed', modified: boolean): void }>();
 
-const $axios = inject<any>('axios')!;
+const api = useApi();
 const { showSuccNotif, showErrNotif } = useNotification();
 
 const showReviewDialog = ref(true);
@@ -95,9 +96,9 @@ const reviewText = ref('');
 const modified = ref(false);
 const progress = ref('');
 
-if (props.metadata.userRating) rating.value = props.metadata.userRating as number;
-progress.value = (props.metadata.progress as string) || '';
-reviewText.value = (props.metadata.review_text as string) || '';
+if (props.metadata?.userRating) rating.value = props.metadata.userRating;
+progress.value = props.metadata?.progress || '';
+reviewText.value = props.metadata?.review_text || '';
 
 const closeDialog = () => {
   if (!deleteConfirm.value) {
@@ -114,39 +115,41 @@ const reviewPayload = () => ({
 });
 
 const submitReview = () => {
-  void $axios
-    .put('/api/review', reviewPayload(), { params: { starOnly: false } })
-    .then((response: { data: { message: string } }) => {
+  void api
+    .put<ReviewSubmitResponse>('/api/review', reviewPayload(), { params: { starOnly: false } })
+    .then((response) => {
       modified.value = true;
       showSuccNotif(response.data.message);
     })
     .then(() => closeDialog())
-    .catch((error: any) => {
-      if (error.response) {
+    .catch((error: unknown) => {
+      const err = error as { response?: { data?: { error?: string }; status?: number; statusText?: string }; message?: string };
+      if (err.response) {
         showErrNotif(
-          error.response.data?.error || `${error.response.status} ${error.response.statusText}`,
+          err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
         );
       } else {
-        showErrNotif(error.message || String(error));
+        showErrNotif(err.message || String(error));
       }
     });
 };
 
 const deleteReview = () => {
-  void $axios
-    .delete('/api/review', { params: { work_id: props.workid } })
-    .then((response: { data: { message: string } }) => {
+  void api
+    .delete<ReviewSubmitResponse>('/api/review', { params: { work_id: props.workid } })
+    .then((response) => {
       modified.value = true;
       showSuccNotif(response.data.message);
     })
     .then(() => closeDialog())
-    .catch((error: any) => {
-      if (error.response) {
+    .catch((error: unknown) => {
+      const err = error as { response?: { data?: { error?: string }; status?: number; statusText?: string }; message?: string };
+      if (err.response) {
         showErrNotif(
-          error.response.data?.error || `${error.response.status} ${error.response.statusText}`,
+          err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
         );
       } else {
-        showErrNotif(error.message || String(error));
+        showErrNotif(err.message || String(error));
       }
     });
 };

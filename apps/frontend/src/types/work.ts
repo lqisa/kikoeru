@@ -27,7 +27,7 @@ export type WorkMetadata = {
   id: number;
   title: string;
   circle: Circle;
-  release: string;
+  release: string | null;
   rate_average_2dp: number;
   rate_count: number;
   rate_count_detail?: RatingDetail[];
@@ -49,7 +49,7 @@ export type WorkMetadata = {
 };
 
 export type TreeItem = {
-  type: 'file' | 'folder' | 'audio' | 'text' | 'image' | 'other';
+  type: 'file' | 'folder' | 'audio' | 'text' | 'image' | 'other' | 'video';
   title: string;
   path?: string;
   hash?: string;

@@ -70,9 +70,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, inject } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useNotification } from '../composables/useNotification';
+import { useApi } from '../composables/useApi';
 
 interface ListItem {
   id: number;
@@ -82,7 +83,7 @@ interface ListItem {
 
 const props = defineProps<{ restrict: string }>();
 const router = useRouter();
-const $axios = inject<{ get: (url: string) => Promise<{ data: ListItem[] }> }>('axios')!;
+const api = useApi();
 const { showErrNotif } = useNotification();
 
 const items = ref<ListItem[]>([]);
@@ -142,17 +143,18 @@ const clearSelected = () => {
 };
 
 const requestList = () => {
-  $axios
-    .get(url.value)
+  api
+    .get<ListItem[]>(url.value)
     .then((response) => {
-      items.value = (response.data).concat();
+      items.value = response.data.concat();
     })
-    .catch((error) => {
-      if (error.response && error.response.status !== 401) {
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      if (err.response && err.response.status !== 401) {
         showErrNotif(
-          error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+          err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
         );
-      } else if (!error.response) showErrNotif(error.message || error);
+      } else if (!err.response) showErrNotif(err.message || String(error));
     });
 };
 

@@ -12,7 +12,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
       const $ = cheerio.load(response.data);
 
       const work = {
-        id: parseInt(rjcode.replace('RJ', '')),
+        id: rjcode.replace('RJ', ''),
         title: $('h2').text().trim().replace('Work Details - ', ''),
         coverURL: $('.detailImage').attr('src') || '',
         circle: {},
@@ -26,6 +26,10 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
         rate_count: null,
         price: null,
       };
+
+      if (work.coverURL && work.coverURL.startsWith('/')) {
+        work.coverURL = `https://hvdb.me${work.coverURL}`;
+      }
 
       $('a[href*="CircleWorks"]').each(function () {
         const href = $(this).attr('href');

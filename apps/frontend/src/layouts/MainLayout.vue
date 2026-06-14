@@ -154,16 +154,17 @@ import { useQuasar, LocalStorage } from 'quasar';
 import { useUserStore } from '../stores/user';
 import { useAudioPlayerStore } from '../stores/audioPlayer';
 import { useNotification } from '../composables/useNotification';
+import { useApi } from '../composables/useApi';
+import type { AuthMeResponse, VersionResponse, SharedConfigResponse, RandomResponse } from '../types';
 import PlayerBar from 'components/PlayerBar.vue';
 import AudioPlayer from 'components/AudioPlayer.vue';
 import LyricsBar from 'components/LyricsBar.vue';
 import SleepMode from 'components/SleepMode.vue';
-import { inject } from 'vue';
 
 const router = useRouter();
 const route = useRoute();
 const $q = useQuasar();
-const $axios = inject<{ get: (url: string) => Promise<{ data: any }> }>('axios')!;
+const api = useApi();
 const userStore = useUserStore();
 const audioStore = useAudioPlayerStore();
 const { showErrNotif, showWarnNotif } = useNotification();
@@ -211,30 +212,31 @@ watch(sharedConfig, (config) => {
 const back = () => router.back();
 
 const initUser = () => {
-  $axios
-    .get('/api/auth/me')
+  api
+    .get<AuthMeResponse>('/api/auth/me')
     .then((res) => {
       userStore.INIT(res.data.user);
       userStore.SET_AUTH(res.data.auth);
     })
-    .catch((error: any) => {
-      if (error.response) {
-        if (error.response.status === 401) {
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      if (err.response) {
+        if (err.response.status === 401) {
           if (route.path !== '/login') router.push('/login');
         } else {
           showErrNotif(
-            error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+            err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
           );
         }
       } else {
-        showErrNotif(error.message || error);
+        showErrNotif(err.message || String(error));
       }
     });
 };
 
 const checkUpdate = () => {
-  $axios
-    .get('/api/version')
+  api
+    .get<VersionResponse>('/api/version')
     .then((res) => {
       if (res.data.update_available && res.data.notifyUser) {
         $q.notify({
@@ -266,47 +268,49 @@ const checkUpdate = () => {
         });
       }
     })
-    .catch((error: any) => console.error(error));
+    .catch((error: unknown) => console.error(error));
 };
 
 const readSharedConfig = () => {
-  $axios
-    .get('/api/config/shared')
+  api
+    .get<SharedConfigResponse>('/api/config/shared')
     .then((response) => {
       sharedConfig.value = response.data.sharedConfig;
     })
-    .catch((error: any) => {
-      if (error.response) {
-        if (error.response.status === 401) {
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      if (err.response) {
+        if (err.response.status === 401) {
           if (route.path !== '/login') router.push('/login');
         } else {
           showErrNotif(
-            error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+            err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
           );
         }
       } else {
-        showErrNotif(error.message || error);
+        showErrNotif(err.message || String(error));
       }
     });
 };
 
 const randomPlay = () => {
-  $axios
-    .get('/api/random')
+  api
+    .get<RandomResponse>('/api/random')
     .then((response) => {
       randId.value = response.data.id;
     })
-    .catch((error: any) => {
-      if (error.response) {
-        if (error.response.status === 401) {
-          showWarnNotif(error.response.data.error);
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      if (err.response) {
+        if (err.response.status === 401) {
+          showWarnNotif(err.response.data?.error || '');
         } else {
           showErrNotif(
-            error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+            err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
           );
         }
       } else {
-        showErrNotif(error.message || error);
+        showErrNotif(err.message || String(error));
       }
     });
 };

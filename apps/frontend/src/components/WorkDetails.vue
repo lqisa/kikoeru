@@ -1,7 +1,7 @@
 <template>
   <div>
     <router-link :to="`/work/${metadata.id}`">
-      <CoverSFW :workid="metadata.id" :nsfw="false" :release="metadata.release" />
+      <CoverSFW :workid="metadata.id" :nsfw="false" :release="metadata.release" :show-gear="isAdmin" @open-cover-picker="showCoverPicker = true" />
     </router-link>
 
     <div class="q-pa-sm">
@@ -170,28 +170,31 @@
         :metadata="metadata"
       ></WriteReview>
     </div>
+
+    <CoverPicker
+      v-if="showCoverPicker"
+      :root-path="workDir || ''"
+      root-name="作品目录"
+      @ok="onCoverSelected"
+      @hide="showCoverPicker = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { inject } from 'vue';
-import type { WorkMetadata } from '../types/work';
+import type { WorkMetadata, RatingDetail, ReviewSubmitResponse, SetCoverResponse } from '../types';
 import CoverSFW from 'components/CoverSFW.vue';
+import CoverPicker from './CoverPicker.vue';
 import WriteReview from './WriteReview.vue';
 import { useNotification } from '../composables/useNotification';
+import { useApi } from '../composables/useApi';
 import { useUserStore } from '../stores/user';
 
-interface RatingDetail {
-  review_point: number;
-  count: number;
-  ratio: number;
-}
-
-const props = defineProps<{ metadata: WorkMetadata }>();
+const props = defineProps<{ metadata: WorkMetadata; workDir?: string }>();
 const emit = defineEmits<{ (e: 'reset'): void }>();
 
-const $axios = inject<any>('axios')!;
+const api = useApi();
 const { showSuccNotif, showErrNotif } = useNotification();
 const userStore = useUserStore();
 
@@ -200,6 +203,11 @@ const userMarked = ref(false);
 const progress = ref('');
 const showReviewDialog = ref(false);
 const showTags = ref(true);
+const showCoverPicker = ref(false);
+
+const isAdmin = computed(() => {
+  return userStore.group === 'administrator';
+});
 
 const sortedRatings = computed(() => {
   if (!props.metadata.rate_count_detail) return [];
@@ -218,25 +226,26 @@ watch(
       userMarked.value = false;
       rating.value = m.rate_average_2dp || 0;
     }
-    progress.value = (m as any).progress || '';
+    progress.value = m.progress || '';
     if (m.tags && m.tags[0]?.name === null) showTags.value = false;
   },
   { immediate: true },
 );
 
 const submitApiCall = (payload: Record<string, unknown>, params?: Record<string, unknown>) => {
-  return $axios
-    .put('/api/review', payload, { params: params || {} })
-    .then((r: { data: { message: string } }) => {
+  return api
+    .put<ReviewSubmitResponse>('/api/review', payload, { params: params || {} })
+    .then((r) => {
       showSuccNotif(r.data.message);
       emit('reset');
     })
-    .catch((error: any) => {
-      if (error.response)
+    .catch((error: unknown) => {
+      const err = error as { response?: { data?: { error?: string }; status?: number; statusText?: string }; message?: string };
+      if (err.response)
         showErrNotif(
-          error.response.data?.error || `${error.response.status} ${error.response.statusText}`,
+          err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
         );
-      else showErrNotif(error.message || String(error));
+      else showErrNotif(err.message || String(error));
     });
 };
 
@@ -254,5 +263,26 @@ const setRating = (newRating: number) => {
 
 const processReview = () => {
   showReviewDialog.value = false;
+};
+
+const onCoverSelected = (imagePath: string) => {
+  showCoverPicker.value = false;
+  api
+    .post<SetCoverResponse>('/api/cover/' + props.metadata.id, {
+      imagePath,
+    })
+    .then((response) => {
+      showSuccNotif(response.data.message);
+      emit('reset');
+    })
+    .catch((error: unknown) => {
+      const err = error as {
+        response?: { data?: { error?: string }; status?: number; statusText?: string };
+        message?: string;
+      };
+      showErrNotif(
+        err.response?.data?.error || err.message || '设置封面失败',
+      );
+    });
 };
 </script>

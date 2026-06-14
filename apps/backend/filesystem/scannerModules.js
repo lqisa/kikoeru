@@ -7,12 +7,17 @@ const {
   scrapeWorkMetadataFromDLsite,
   scrapeDynamicWorkMetadataFromDLsite,
 } = require("../scraper/dlsite");
+const scrapeWorkMetadataFromHVDB = require("../scraper/hvdb");
 const db = require("../database/db");
 const { createSchema } = require("../database/schema");
 const {
   getFolderList,
   deleteCoverImageFromDisk,
   saveCoverImageToDisk,
+  saveMissingFile,
+  checkMissingFile,
+  removeMissingFile,
+  findFirstImageInDir,
 } = require("./utils");
 const { md5 } = require("../auth/utils");
 const { nameToUUID } = require("../scraper/utils");
@@ -177,6 +182,14 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
   });
 
   return scrapeWorkMetadataFromDLsite(id, tagLanguage) // 抓取该音声的元数据
+    .catch((dlsiteError) => {
+      console.warn(`  ! [RJ${id}] DLsite 抓取失败: ${dlsiteError.message}. 尝试从 hvdb.me 回退...`);
+      addLogForTask(id, {
+        level: "warn",
+        message: `DLsite 抓取失败，尝试从 hvdb.me 回退...`,
+      });
+      return scrapeWorkMetadataFromHVDB(id); // 调用 HVDB 抓取函数
+    })
     .then((metadata) => {
       // 将抓取到的元数据插入到数据库
       console.log(` -> [RJ${id}] 元数据抓取成功，准备添加到数据库...`);
@@ -221,7 +234,10 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
         message: `在抓取元数据过程中出错: ${err.message}`,
       });
 
-      return "failed";
+      return {
+        value: null,
+        status: "failed",
+      };
     });
 };
 
@@ -232,49 +248,114 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
  * @param {Array} types img types: ['main', 'sam', 'sam@2x', 'sam@3x', '240x240', '360x360']
  * @param {string} url cover fallback url
  */
-const getCoverImage = (id, types, url) => {
+const getCoverImage = (id, types, url, workDir) => {
   const rjcode = id;
   const id2 = id % 1000 === 0 ? id : parseInt(id / 1000) * 1000 + 1000;
   const rjcode2 = id2.toString().padStart(id.length, "0");
-  const promises = [];
-  types.forEach((type) => {
-    if (!url) {
-      url = `https://img.dlsite.jp/modpub/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_${type}.jpg`;
-      if (type === "240x240" || type === "360x360") {
-        url = `https://img.dlsite.jp/resize/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_main_${type}.jpg`;
-      }
-    } else {
-      url = url.replace(/main(?=\.(jpg|png|webp))/, type);
-    }
-    promises.push(
-      axios
-        .retryGet(url, { responseType: "stream", retry: {} })
-        .then((imageRes) => {
-          return saveCoverImageToDisk(imageRes.data, rjcode, type).then(() => {
-            console.log(
-              ` -> [RJ${rjcode}] 封面 RJ${rjcode}_img_${type}.jpg 下载成功.`,
-            );
-            addLogForTask(rjcode, {
-              level: "info",
-              message: `封面 RJ${rjcode}_img_${type}.jpg 下载成功.`,
-            });
 
-            return "added";
-          });
-        })
-        .catch((err) => {
-          console.error(
-            `  ! [RJ${rjcode}] 在下载封面 RJ${rjcode}_img_${type}.jpg 过程中出错: ${err.message}`,
+  const buildHardcodedUrl = (type) => {
+    if (type === "240x240" || type === "360x360") {
+      return `https://img.dlsite.jp/resize/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_main_${type}.jpg`;
+    }
+    return `https://img.dlsite.jp/modpub/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_${type}.jpg`;
+  };
+
+  const buildFallbackUrl = (type) => {
+    if (!url) return null;
+    if (type === "main") return url;
+    const derived = url.replace(/main(?=\.(jpg|png|webp))/, type);
+    if (derived !== url) return derived;
+    return null;
+  };
+
+  const downloadOne = (type, downloadUrl) => {
+    return axios
+      .retryGet(downloadUrl, { responseType: "stream", retry: {} })
+      .then((imageRes) => {
+        return saveCoverImageToDisk(imageRes.data, rjcode, type).then(() => {
+          console.log(
+            ` -> [RJ${rjcode}] 封面 RJ${rjcode}_img_${type}.jpg 下载成功.`,
           );
           addLogForTask(rjcode, {
-            level: "error",
-            message: `在下载封面 RJ${rjcode}_img_${type}.jpg 过程中出错: ${err.message}`,
+            level: "info",
+            message: `封面 RJ${rjcode}_img_${type}.jpg 下载成功.`,
           });
+          removeMissingFile(rjcode, type);
+          return "added";
+        });
+      });
+  };
 
-          return "failed";
-        }),
-    );
-  });
+  const downloadWithFallback = (type) => {
+    const hardcodedUrl = buildHardcodedUrl(type);
+    const fallbackUrl = buildFallbackUrl(type);
+    const isRequired = type === "main";
+
+    return downloadOne(type, hardcodedUrl)
+      .catch(() => {
+        if (fallbackUrl) {
+          console.log(
+            `  ! [RJ${rjcode}] 封面 ${type} 硬编码 URL 失败，尝试 fallback URL...`,
+          );
+          addLogForTask(rjcode, {
+            level: "info",
+            message: `封面 ${type} 硬编码 URL 失败，尝试 fallback URL...`,
+          });
+          return downloadOne(type, fallbackUrl);
+        }
+        return Promise.reject(new Error("hardcoded URL failed"));
+      })
+      .catch(() => {
+        if (isRequired && workDir) {
+          console.log(
+            `  ! [RJ${rjcode}] 封面 main 远程下载失败，尝试本地首图回退...`,
+          );
+          addLogForTask(rjcode, {
+            level: "info",
+            message: "封面 main 远程下载失败，尝试本地首图回退...",
+          });
+          const localImage = findFirstImageInDir(workDir);
+          if (localImage) {
+            const destPath = path.join(
+              config.coverFolderDir,
+              `RJ${rjcode}_img_main.jpg`,
+            );
+            try {
+              fs.copyFileSync(localImage, destPath);
+              console.log(
+                ` -> [RJ${rjcode}] 封面从本地图片 ${path.basename(localImage)} 复制成功.`,
+              );
+              addLogForTask(rjcode, {
+                level: "info",
+                message: `封面从本地图片 ${path.basename(localImage)} 复制成功.`,
+              });
+              removeMissingFile(rjcode, type);
+              return "added";
+            } catch (err) {
+              console.error(
+                `  ! [RJ${rjcode}] 复制本地图片失败: ${err.message}`,
+              );
+              addLogForTask(rjcode, {
+                level: "error",
+                message: `复制本地图片失败: ${err.message}`,
+              });
+            }
+          }
+        }
+        return Promise.reject(new Error("all fallbacks failed"));
+      })
+      .catch(() => {
+        console.error(
+          `  ! [RJ${rjcode}] 封面 ${type} 所有回退均失败.`,
+        );
+        addLogForTask(rjcode, {
+          level: "error",
+          message: `封面 ${type} 所有回退均失败.`,
+        });
+        saveMissingFile(rjcode, type);
+        return "added";
+      });
+  };
 
   console.log(` -> [RJ${rjcode}] 从 DLsite 下载封面...`);
   addLogForTask(rjcode, {
@@ -282,15 +363,8 @@ const getCoverImage = (id, types, url) => {
     message: "从 DLsite 下载封面...",
   });
 
-  return Promise.all(promises).then((results) => {
-    results.forEach((result) => {
-      if (result === "failed") {
-        return "failed";
-      }
-    });
-
-    return "added";
-  });
+  const promises = types.map((type) => downloadWithFallback(type));
+  return Promise.all(promises).then(() => "added");
 };
 
 /**
@@ -301,7 +375,7 @@ const getCoverImage = (id, types, url) => {
 const processFolder = (folder) =>
   db
     .knex("t_work")
-    .select("id", "cover_url_fallback")
+    .select("id", "cover_url_fallback", "root_folder", "dir")
     .where("id", "=", folder.id)
     .count()
     .first()
@@ -310,16 +384,13 @@ const processFolder = (folder) =>
       const coverTypes = ["main", "sam", "240x240"];
       const count = res["count(*)"];
       if (count) {
-        // 查询数据库，检查是否已经写入该音声的元数据
-        // 已经成功写入元数据
-        // 检查音声封面图片是否缺失
         const lostCoverTypes = [];
         coverTypes.forEach((type) => {
           const coverPath = path.join(
             config.coverFolderDir,
             `RJ${rjcode}_img_${type}.jpg`,
           );
-          if (!fs.existsSync(coverPath)) {
+          if (!fs.existsSync(coverPath) && !checkMissingFile(rjcode, type)) {
             lostCoverTypes.push(type);
           }
         });
@@ -332,10 +403,18 @@ const processFolder = (folder) =>
             message: "封面图片缺失，重新下载封面图片...",
           });
 
+          const rootFolder = config.rootFolders.find(
+            (rf) => rf.name === res.root_folder,
+          );
+          const workDir = rootFolder
+            ? path.join(rootFolder.path, res.dir)
+            : null;
+
           return getCoverImage(
             folder.id,
             lostCoverTypes,
             res.cover_url_fallback,
+            workDir,
           );
         } else {
           return "skipped";
@@ -364,6 +443,7 @@ const processFolder = (folder) =>
                 folder.id,
                 coverTypes,
                 result.value?.coverURL,
+                folder.absolutePath,
               );
             }
           });
@@ -431,6 +511,34 @@ const performCleanup = async () => {
  * 执行扫描
  * createCoverFolder => createSchema => cleanup => getAllFolderList => processAllFolder
  */
+const checkNetworkConnectivity = () => {
+  if (!config.httpProxyHost && !config.httpProxyPort) {
+    return Promise.resolve(true);
+  }
+
+  emitMainLog(" * 正在检测网络连通性...");
+  return axios
+    .retryGet("https://www.dlsite.com/maniax/", {
+      responseType: "text",
+      retry: { limit: 1, retryCount: 0, retryDelay: 1000, timeout: 8000 },
+    })
+    .then((res) => {
+      if (res.status === 200) {
+        emitMainLog(" * 网络连通性检测通过.");
+        return true;
+      }
+      emitMainLog(" ! 网络连通性检测失败: 非 200 响应.", "error");
+      return false;
+    })
+    .catch((err) => {
+      emitMainLog(
+        ` ! 网络连通性检测失败: ${err.message}. 请检查代理配置.`,
+        "error",
+      );
+      return false;
+    });
+};
+
 const performScan = () => {
   if (!fs.existsSync(config.coverFolderDir)) {
     try {
@@ -464,6 +572,18 @@ const performScan = () => {
 
           process.exit(1);
         }
+      }
+
+      const networkOk = await checkNetworkConnectivity();
+      if (!networkOk) {
+        const message = "网络连通性检测失败，扫描已中止。请检查代理配置后重试。";
+        emitMainLog(` ! ${message}`, "error");
+        process.send({
+          event: "SCAN_FINISHED",
+          payload: { message },
+        });
+        db.knex.destroy();
+        process.exit(1);
       }
 
       const counts = {
@@ -548,8 +668,7 @@ const performScan = () => {
 
       try {
         // 去重，避免在之后的并行处理文件夹过程中，出现对数据库同时写入同一条记录的错误
-        const uniqueFolderList = uniqueArr(folderList).uniqueArr;
-        const duplicate = uniqueArr(folderList).duplicate;
+        const { uniqueArr: uniqueFolderList, duplicate } = uniqueArr(folderList);
         const duplicateNum = folderList.length - uniqueFolderList.length;
 
         if (duplicateNum) {

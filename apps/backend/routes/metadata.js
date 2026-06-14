@@ -2,8 +2,10 @@ const path = require('path')
 const express = require('express')
 const router = express.Router()
 const { param, query } = require('express-validator')
+const fs = require('fs')
 const db = require('../database/db')
 const { getTrackList, toTree } = require('../filesystem/utils')
+const { removeMissingFile } = require('../filesystem/utils')
 const { config } = require('../config')
 const normalize = require('./utils/normalize')
 const { isValidRequest } = require('./utils/validate')
@@ -27,6 +29,37 @@ router.get('/cover/:id',
         })
       }
     })
+  })
+
+// POST set work cover image
+router.post('/cover/:id',
+  param('id').isInt(),
+  (req, res, next) => {
+    if (!isValidRequest(req, res)) return
+
+    if (config.auth && req.user.name !== 'admin') {
+      return res.status(403).send({ error: '只有 admin 账号能设置封面.' })
+    }
+
+    const rjcode = req.params.id
+    const imagePath = req.body.imagePath
+    if (!imagePath) {
+      return res.status(400).send({ error: '请提供 imagePath 参数.' })
+    }
+
+    const resolvedPath = path.resolve(imagePath)
+    if (!fs.existsSync(resolvedPath)) {
+      return res.status(404).send({ error: '图片文件不存在.' })
+    }
+
+    const destPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_main.jpg`)
+    try {
+      fs.copyFileSync(resolvedPath, destPath)
+      removeMissingFile(rjcode, 'main')
+      res.send({ message: '封面设置成功.' })
+    } catch (err) {
+      next(err)
+    }
   })
 
 // GET work metadata

@@ -4,7 +4,8 @@ const { md5 } = require('../auth/utils')
 const knexMigrate = require('./knex-migrate')
 const { databaseExist, createUser } = require('./db')
 const { config, updateConfig } = require('../config')
-const { createSchema } = require('./schema')
+const { createSchema, createStaticMetadataView } = require('./schema')
+const { knex } = require('./db')
 
 const initApp = async () => {
   const migrationDir = path.join(__dirname, 'migrations')
@@ -45,6 +46,13 @@ const initApp = async () => {
   if (databaseExist) {
     try {
       await runMigrations()
+      const columns = await knex.raw(`PRAGMA table_info(staticMetadata)`)
+      const hasRootFolder = columns.some((col) => col.name === 'root_folder')
+      if (!hasRootFolder) {
+        console.log(' * 检测到 staticMetadata 视图缺少 root_folder 字段，正在重建视图...')
+        await createStaticMetadataView()
+        console.log(' * staticMetadata 视图已重建.')
+      }
       updateConfig()
     } catch (error) {
       console.log('升级迁移过程中出错，请在GitHub issues中报告作者')

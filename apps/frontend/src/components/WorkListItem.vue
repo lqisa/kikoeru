@@ -51,9 +51,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useQuasar } from 'quasar';
+import type { WorkMetadata } from '../types';
 
 interface Props {
-  metadata: Record<string, any>;
+  metadata: WorkMetadata;
   showLabel?: boolean;
 }
 

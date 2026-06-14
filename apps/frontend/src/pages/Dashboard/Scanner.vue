@@ -159,30 +159,36 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useSocket } from '../../composables/useSocket';
+import type { ScanTask, ScanResult, ScanLog } from '../../types';
 
 const { registerEvent, emit, isConnected } = useSocket();
 
 const tab = ref('tasks');
 const state = ref('');
 const connected = ref(false);
-const tasks = ref<any[]>([]);
-const failedTasks = ref<any[]>([]);
-const logs = ref<{ message: string; level: string }[]>([]);
-const results = ref<any[]>([]);
+const tasks = ref<ScanTask[]>([]);
+const failedTasks = ref<ScanTask[]>([]);
+const logs = ref<ScanLog[]>([]);
+const results = ref<ScanResult[]>([]);
 
-registerEvent('SCAN_TASKS', (payload: any) => {
+registerEvent('SCAN_TASKS', (payload: { tasks: ScanTask[] }) => {
   tasks.value = payload.tasks || [];
 });
 
-registerEvent('SCAN_FAILED_TASKS', (payload: any) => {
+registerEvent('SCAN_FAILED_TASKS', (payload: { failedTasks: ScanTask[] }) => {
   failedTasks.value = payload.failedTasks || [];
 });
 
-registerEvent('SCAN_RESULTS', (payload: any) => {
+registerEvent('SCAN_RESULTS', (payload: { results: ScanResult[] }) => {
   results.value = payload.results || [];
 });
 
-registerEvent('SCAN_INIT_STATE', (payload: any) => {
+registerEvent('SCAN_INIT_STATE', (payload: {
+  mainLogs: ScanLog[];
+  tasks: ScanTask[];
+  failedTasks: ScanTask[];
+  results: ScanResult[];
+}) => {
   state.value = 'running';
   logs.value = payload.mainLogs || [];
   tasks.value = payload.tasks || [];
@@ -190,11 +196,11 @@ registerEvent('SCAN_INIT_STATE', (payload: any) => {
   results.value = payload.results || [];
 });
 
-registerEvent('SCAN_MAIN_LOGS', (payload: any) => {
+registerEvent('SCAN_MAIN_LOGS', (payload: { mainLogs: ScanLog[] }) => {
   logs.value = payload.mainLogs || [];
 });
 
-registerEvent('SCAN_FINISHED', (payload: any) => {
+registerEvent('SCAN_FINISHED', (payload: { message: string }) => {
   state.value = 'finished';
   logs.value.push({
     level: 'info',

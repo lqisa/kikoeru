@@ -1,5 +1,21 @@
 import type { Socket } from 'socket.io-client';
 
+export type ScanLog = {
+  message: string;
+  level: string;
+};
+
+export type ScanTask = {
+  rjcode: number;
+  logs: ScanLog[];
+};
+
+export type ScanResult = {
+  rjcode: number;
+  result: 'added' | 'updated' | 'failed';
+  count: number;
+};
+
 export type SocketEventType =
   | 'connect'
   | 'disconnect'
@@ -25,9 +41,19 @@ export type SocketEvents = {
     user: { name: string; group: string };
   }) => void;
   scan: (payload: unknown) => void;
-  SCAN_INIT_STATE: () => void;
+  SCAN_INIT_STATE: (payload: {
+    mainLogs: ScanLog[];
+    tasks: ScanTask[];
+    failedTasks: ScanTask[];
+    results: ScanResult[];
+  }) => void;
   SCAN_ERROR: () => void;
   SCAN_PROGRESS: (payload: { current: number; total: number }) => void;
+  SCAN_TASKS: (payload: { tasks: ScanTask[] }) => void;
+  SCAN_FAILED_TASKS: (payload: { failedTasks: ScanTask[] }) => void;
+  SCAN_RESULTS: (payload: { results: ScanResult[] }) => void;
+  SCAN_MAIN_LOGS: (payload: { mainLogs: ScanLog[] }) => void;
+  SCAN_FINISHED: (payload: { message: string }) => void;
   play: (data: { workId: number; trackId?: string }) => void;
   pause: () => void;
   stop: () => void;
@@ -45,7 +71,7 @@ export type SocketState = {
 
 export type SocketManager = {
   socket: Readonly<{ value: SocketState }>;
-  registerEvent: <T extends string>(event: T, handler: (...args: unknown[]) => void) => void;
+  registerEvent: <T = unknown>(event: string, handler: (arg: T) => void) => void;
   setAuthToken: (token: string) => void;
   open: () => void;
   close: () => void;

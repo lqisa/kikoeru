@@ -133,6 +133,15 @@ const toTree = (tracks, workTitle, workDir, rootFolder) => {
         mediaStreamUrl,
         mediaDownloadUrl
       })
+    } else if (track.ext === '.mp4' || track.ext === '.webm') {
+      fatherFolder.push({
+        type: 'video',
+        hash: track.hash,
+        title: track.title,
+        workTitle,
+        mediaStreamUrl,
+        mediaDownloadUrl
+      })
     } else {
       fatherFolder.push({
         type: 'audio',
@@ -224,10 +233,55 @@ const saveCoverImageToDisk = (stream, rjcode, type) => new Promise((resolve, rej
   }
 })
 
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp'])
+
+const saveMissingFile = (rjcode, type) => {
+  const missingPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg.missing`)
+  try {
+    fs.writeFileSync(missingPath, '')
+  } catch (_) {}
+}
+
+const checkMissingFile = (rjcode, type) => {
+  const missingPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg.missing`)
+  return fs.existsSync(missingPath)
+}
+
+const removeMissingFile = (rjcode, type) => {
+  const missingPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg.missing`)
+  try {
+    if (fs.existsSync(missingPath)) {
+      fs.unlinkSync(missingPath)
+    }
+  } catch (_) {}
+}
+
+const findFirstImageInDir = (dir) => {
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.isFile() && IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+        return path.join(dir, entry.name)
+      }
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const result = findFirstImageInDir(path.join(dir, entry.name))
+        if (result) return result
+      }
+    }
+  } catch (_) {}
+  return null
+}
+
 module.exports = {
   getTrackList,
   toTree,
   getFolderList,
   deleteCoverImageFromDisk,
-  saveCoverImageToDisk
+  saveCoverImageToDisk,
+  saveMissingFile,
+  checkMissingFile,
+  removeMissingFile,
+  findFirstImageInDir
 }
