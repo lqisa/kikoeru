@@ -353,8 +353,8 @@ const getWorksByKeyWord = ({ keyword, username = 'admin' } = {}) => {
     .where('t_review.user_name', username)
     .as('userrate')
 
-  const workid = keyword.match(/((R|r)(J|j))?(\d{6})/)
-    ? keyword.match(/((R|r)(J|j))?(\d{6})/)[4]
+  const workid = keyword.match(/((R|r)(J|j))?(\d+)/)
+    ? keyword.match(/((R|r)(J|j))?(\d+)/)[4]
     : ''
   if (workid) {
     return knex('staticMetadata')
@@ -485,7 +485,7 @@ const updateUserReview = async (
   username,
   workid,
   rating,
-  review_text = '',
+  review_text = '', // eslint-disable-line camelcase
   progress = '',
   starOnly = true,
   progressOnly = false
@@ -513,11 +513,11 @@ const updateUserReview = async (
     } else {
       await trx.raw(
         'UPDATE t_review SET rating = ?, review_text = ?, progress = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ? AND work_id = ?;',
-        [rating, review_text, progress, username, workid]
+        [rating, review_text, progress, username, workid] // eslint-disable-line camelcase
       )
       await trx.raw(
         'INSERT OR IGNORE INTO t_review (user_name, work_id, rating, review_text, progress) VALUES (?, ?, ?, ?, ?);',
-        [username, workid, rating, review_text, progress]
+        [username, workid, rating, review_text, progress] // eslint-disable-line camelcase
       )
     }
   })

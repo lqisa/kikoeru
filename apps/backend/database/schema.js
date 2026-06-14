@@ -4,38 +4,38 @@ const dbVersion = '20210502081522'
 
 const VIEW_SQL = `
   CREATE VIEW staticMetadata AS
-  SELECT baseQueryWithVA.*,
-    json_object('tags', json_group_array(json_object('id', t_tag.id, 'name', t_tag.name))) AS tagObj
-  FROM (
-    SELECT baseQuery.*,
-      json_object('vas', json_group_array(json_object('id', t_va.id, 'name', t_va.name))) AS vaObj
-    FROM (
-      SELECT t_work.id, 
-        t_work.title,
-        t_work.circle_id,
-        t_circle.name,
-        json_object('id', t_work.circle_id, 'name', t_circle.name) AS circleObj,
-        t_work.nsfw,
-        t_work.release,
-        t_work.dl_count,
-        t_work.price,
-        t_work.review_count,
-        t_work.rate_count,
-        t_work.rate_average_2dp,
-        t_work.rate_count_detail,
-        t_work.rank,
-        t_work.root_folder,
-        t_work.dir
-      FROM t_work
-      JOIN t_circle ON t_circle.id = t_work.circle_id
-    ) AS baseQuery
-    LEFT JOIN r_va_work ON r_va_work.work_id = baseQuery.id
-    LEFT JOIN t_va ON t_va.id = r_va_work.va_id
-    GROUP BY baseQuery.id
-  ) AS baseQueryWithVA
-  LEFT JOIN r_tag_work ON r_tag_work.work_id = baseQueryWithVA.id
-  LEFT JOIN t_tag ON t_tag.id = r_tag_work.tag_id
-  GROUP BY baseQueryWithVA.id;
+  SELECT t_work.id,
+    t_work.title,
+    t_work.circle_id,
+    t_circle.name,
+    json_object('id', t_work.circle_id, 'name', t_circle.name) AS circleObj,
+    t_work.nsfw,
+    t_work.release,
+    t_work.dl_count,
+    t_work.price,
+    t_work.review_count,
+    t_work.rate_count,
+    t_work.rate_average_2dp,
+    t_work.rate_count_detail,
+    t_work.rank,
+    t_work.root_folder,
+    t_work.dir,
+    COALESCE(
+      (SELECT json_object('vas', json_group_array(json_object('id', sub_va.id, 'name', sub_va.name)))
+       FROM r_va_work AS sub_rva
+       LEFT JOIN t_va AS sub_va ON sub_va.id = sub_rva.va_id
+       WHERE sub_rva.work_id = t_work.id),
+      '{"vas":[]}'
+    ) AS vaObj,
+    COALESCE(
+      (SELECT json_object('tags', json_group_array(json_object('id', sub_tag.id, 'name', sub_tag.name)))
+       FROM r_tag_work AS sub_rtag
+       LEFT JOIN t_tag AS sub_tag ON sub_tag.id = sub_rtag.tag_id
+       WHERE sub_rtag.work_id = t_work.id),
+      '{"tags":[]}'
+    ) AS tagObj
+  FROM t_work
+  JOIN t_circle ON t_circle.id = t_work.circle_id;
 `
 
 const createStaticMetadataView = () => knex.schema
@@ -110,6 +110,8 @@ const createSchema = () => knex.schema
   })
   .raw(`DROP VIEW IF EXISTS staticMetadata`)
   .raw(VIEW_SQL)
+  .raw('CREATE INDEX IF NOT EXISTS idx_r_tag_work_work_id ON r_tag_work(work_id)')
+  .raw('CREATE INDEX IF NOT EXISTS idx_r_va_work_work_id ON r_va_work(work_id)')
   .then(() => {
     console.log(' * 成功构建数据库结构.')
   })

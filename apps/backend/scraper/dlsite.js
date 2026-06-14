@@ -53,7 +53,7 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
       // cover fallback
       const candidateStr = $('.work_slider_container .slider_item.active img-with-fallback').attr(':candidates')
       const imgList = candidateStr
-        ? candidateStr.replace(/[\['\]\s]/g, '').split(',').filter(Boolean)
+        ? candidateStr.replace(/[['\]\s]/g, '').split(',').filter(Boolean)
         : []
       const fallbackImg = $("meta[itemprop='image']").attr('content') || ''
       const twitterImg = $('meta[name="twitter:image:src"]').attr('content') || ''

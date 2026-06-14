@@ -53,6 +53,8 @@ const initApp = async () => {
         await createStaticMetadataView()
         console.log(' * staticMetadata 视图已重建.')
       }
+      await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_r_tag_work_work_id ON r_tag_work(work_id)')
+      await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_r_va_work_work_id ON r_va_work(work_id)')
       updateConfig()
     } catch (error) {
       console.log('升级迁移过程中出错，请在GitHub issues中报告作者')
