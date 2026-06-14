@@ -10,7 +10,7 @@
             v-model="rootFolder.name"
             required
             lazy-rules
-            :rules="[(v: string) => !config.rootFolders.find((f: any) => f.name === v) || '已存在']"
+            :rules="[(v: string) => !config.rootFolders.find((f: RootFolder) => f.name === v) || '已存在']"
             label="文件夹别名"
           /><q-input
             outlined
@@ -18,9 +18,16 @@
             v-model="rootFolder.path"
             required
             lazy-rules
-            :rules="[(v: string) => !config.rootFolders.find((f: any) => f.path === v) || '已存在']"
+            :rules="[(v: string) => !config.rootFolders.find((f: RootFolder) => f.path === v) || '已存在']"
             label="绝对路径"
-          />
+          >
+            <template #after>
+              <q-btn flat round color="primary" icon="folder_open" @click="showBrowser = true">
+                <q-tooltip>浏览目录</q-tooltip>
+              </q-btn>
+            </template>
+          </q-input>
+          <folder-browser v-model="showBrowser" @ok="onFolderSelected" />
           <div class="row justify-end">
             <q-btn type="submit" color="primary" label="添加" />
           </div>
@@ -49,11 +56,19 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, onMounted, inject } from 'vue';
-const $axios = inject<any>('axios')!;
-const config = ref({ rootFolders: [] as any[] });
-const rootFolder = ref({ name: '', path: '' });
+import { ref, onMounted } from 'vue';
+import { useApi } from '../../composables/useApi';
+import FolderBrowser from '../../components/FolderBrowser.vue';
+import type { AdminConfigResponse, RootFolder } from '../../types';
+
+const api = useApi();
+const config = ref<AdminConfigResponse['config']>({ rootFolders: [] as RootFolder[] });
+const rootFolder = ref<RootFolder>({ name: '', path: '' });
 const loading = ref(false);
+const showBrowser = ref(false);
+const onFolderSelected = (dirPath: string) => {
+  rootFolder.value.path = dirPath;
+};
 const onSubmitRootFolder = () => {
   config.value.rootFolders.push({ ...rootFolder.value });
   rootFolder.value = { name: '', path: '' };
@@ -62,10 +77,10 @@ const remove = (i: number) => {
   config.value.rootFolders.splice(i, 1);
 };
 const onSubmit = () => {
-  $axios.put('/api/config/admin', { config: config.value });
+  api.put('/api/config/admin', { config: config.value });
 };
 onMounted(() => {
-  $axios.get('/api/config/admin').then((r: any) => {
+  api.get<AdminConfigResponse>('/api/config/admin').then((r) => {
     config.value = r.data.config;
   });
 });

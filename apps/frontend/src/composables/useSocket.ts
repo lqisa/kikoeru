@@ -37,7 +37,7 @@ export function createSocketManager() {
     state.value.connected = false;
   });
 
-  socket.on('connect_error', (error: any) => {
+  socket.on('connect_error', (error: Error) => {
     console.error('Socket connection error:', error);
   });
 
@@ -46,14 +46,15 @@ export function createSocketManager() {
 }
 
 export function useSocket(): SocketManager {
-  const registerEvent = <T = unknown>(event: string, handler: (...args: T[]) => void) => {
+  const registerEvent = <T = unknown>(event: string, handler: (arg: T) => void) => {
     const socket = state.value.socket;
     if (!socket) return;
 
-    socket.on(event, handler);
+    const wrappedHandler = (...args: unknown[]) => handler(args[0] as T);
+    socket.on(event, wrappedHandler);
 
     onUnmounted(() => {
-      socket.off(event, handler);
+      socket.off(event, wrappedHandler);
     });
   };
 

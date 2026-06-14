@@ -15,6 +15,19 @@
         </q-chip>
       </div>
 
+      <div v-if="showGear" class="absolute-top-right" style="padding: 5px">
+        <q-btn
+          dense
+          round
+          flat
+          icon="settings"
+          color="white"
+          size="sm"
+          style="background: rgba(0,0,0,0.4)"
+          @click.prevent="emit('openCoverPicker')"
+        />
+      </div>
+
       <div v-if="release" class="absolute-bottom-right" style="padding: 5px">
         {{ release }}
       </div>
@@ -29,12 +42,18 @@ import { useQuasar } from 'quasar';
 interface Props {
   workid: string | number;
   nsfw?: boolean;
-  release: string;
+  release: string | null;
+  showGear?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   nsfw: true,
+  showGear: false,
 });
+
+const emit = defineEmits<{
+  (e: 'openCoverPicker'): void;
+}>();
 
 const $q = useQuasar();
 const blurFlag = ref(true);

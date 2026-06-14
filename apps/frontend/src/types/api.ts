@@ -72,3 +72,90 @@ export type UserReview = {
 export type CircleResponse = { id: number; name: string };
 export type TagResponse = { id: number; name: string };
 export type VoiceActorResponse = { id: number; name: string };
+
+export type RootFolder = {
+  name: string;
+  path: string;
+};
+
+export type AdminConfig = {
+  rootFolders: RootFolder[];
+  rewindSeekTime?: number;
+  forwardSeekTime?: number;
+};
+
+export type AdminConfigResponse = {
+  config: AdminConfig;
+};
+
+export type SharedConfig = {
+  rewindSeekTime: number;
+  forwardSeekTime: number;
+};
+
+export type SharedConfigResponse = {
+  sharedConfig: SharedConfig;
+};
+
+export type VersionResponse = {
+  update_available: boolean;
+  notifyUser: boolean;
+  lockFileExists: boolean;
+  lockReason: string;
+};
+
+export type RandomResponse = {
+  id: number;
+};
+
+export type AuthMeResponse = {
+  user: { name: string; group: string };
+  auth: boolean;
+};
+
+export type UserInfo = {
+  name: string;
+  group: string;
+};
+
+export type UsersResponse = {
+  users: UserInfo[];
+};
+
+export type ReviewSubmitResponse = {
+  message: string;
+};
+
+export type LrcCheckResponse = {
+  result: boolean;
+  hash?: string;
+};
+
+export type BrowseDirItem = {
+  name: string;
+  path: string;
+};
+
+export type BrowseResponse = {
+  currentPath: string;
+  dirs: BrowseDirItem[];
+};
+
+export type BrowseFileItem = {
+  name: string;
+  path: string;
+};
+
+export type BrowseFilesResponse = {
+  currentPath: string;
+  dirs: BrowseFileItem[];
+  files: BrowseFileItem[];
+};
+
+export type SetCoverRequest = {
+  imagePath: string;
+};
+
+export type SetCoverResponse = {
+  message: string;
+};

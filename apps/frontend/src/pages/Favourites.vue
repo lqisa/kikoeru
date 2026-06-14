@@ -95,16 +95,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, inject } from 'vue';
+import { ref, onMounted } from 'vue';
 import FavListItem from 'components/FavListItem.vue';
 import { useNotification } from '../composables/useNotification';
+import { useApi } from '../composables/useApi';
 import type { WorkMetadata, WorksResponse } from '../types';
 
 const props = defineProps<{ route: string; progress?: string }>();
 
-const $axios = inject<{
-  get: (url: string, config?: Record<string, unknown>) => Promise<{ data: WorksResponse }>;
-}>('axios')!;
+const api = useApi();
 const { showErrNotif } = useNotification();
 
 const mode = ref(props.route || 'review');
@@ -145,19 +144,20 @@ const requestWorks = () => {
   const apiUrl =
     mode.value === 'review' ? '/api/review/user' : `/api/progress/${progressFilter.value}`;
 
-  return $axios
-    .get(apiUrl, { params: { page: page.value } })
+  return api
+    .get<WorksResponse>(apiUrl, { params: { page: page.value } })
     .then((response) => {
       const data = response.data;
       works.value = page.value === 1 ? data.works : works.value.concat(data.works);
       page.value++;
     })
-    .catch((error) => {
-      if (error.response && error.response.status !== 401) {
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      if (err.response && err.response.status !== 401) {
         showErrNotif(
-          error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+          err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
         );
-      } else if (!error.response) showErrNotif(error.message || error);
+      } else if (!err.response) showErrNotif(err.message || String(error));
       stopLoad.value = true;
     });
 };

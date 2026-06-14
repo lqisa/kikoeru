@@ -108,22 +108,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onActivated, onDeactivated, inject } from 'vue';
+import { ref, watch, computed, onMounted, onActivated, onDeactivated } from 'vue';
 import { useRoute } from 'vue-router';
 import { useQuasar } from 'quasar';
 import WorkCard from 'components/WorkCard.vue';
 import WorkListItem from 'components/WorkListItem.vue';
 import { useNotification } from '../composables/useNotification';
+import { useApi } from '../composables/useApi';
 import type { WorkMetadata, SortOption, PaginationInfo, WorksResponse } from '../types';
 
 const route = useRoute();
 const $q = useQuasar();
-const $axios = inject<{
-  get: (
-    url: string,
-    config?: Record<string, unknown>,
-  ) => Promise<{ data: WorksResponse | { name: string } }>;
-}>('axios')!;
+const api = useApi();
 const { showErrNotif } = useNotification();
 
 const listMode = ref(false);
@@ -167,12 +163,9 @@ const refreshPageTitle = () => {
   if (query.tagIds && typeof query.tagIds === 'string') {
     const tagIdArr = query.tagIds.split(',');
     const promises = tagIdArr.map((id) =>
-      $axios
-        .get(`/api/tags/${id}`)
-        .then((res) => {
-          const data = res.data;
-          return 'name' in data ? data.name : id;
-        })
+      api
+        .get<{ name: string }>(`/api/tags/${id}`)
+        .then((res) => res.data.name)
         .catch(() => id),
     );
     Promise.all(promises).then((names) => {
@@ -192,23 +185,23 @@ const refreshPageTitle = () => {
       apiUrl = `/api/${restrict}/${query.vaId}`;
     }
 
-    $axios
-      .get(apiUrl)
+    api
+      .get<{ name: string }>(apiUrl)
       .then((response) => {
-        const data = response.data;
-        const name = 'name' in data ? data.name : '';
+        const name = response.data.name;
         let title = '';
         if (restrict === 'tags') title = 'Works tagged with ';
         else if (restrict === 'vas') title = 'Works voiced by ';
         else title = 'Works by ';
         pageTitle.value = title + (name || '');
       })
-      .catch((error) => {
-        if (error.response && error.response.status !== 401) {
+      .catch((error: unknown) => {
+        const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+        if (err.response && err.response.status !== 401) {
           showErrNotif(
-            error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+            err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
           );
-        } else if (!error.response) showErrNotif(error.message || error);
+        } else if (!err.response) showErrNotif(err.message || String(error));
       });
   } else if (query.keyword) {
     pageTitle.value = `Search by ${query.keyword}`;
@@ -225,22 +218,21 @@ const requestWorksQueue = () => {
     page: pagination.value.currentPage + 1 || 1,
     seed: seed.value,
   };
-  return $axios
-    .get(url.value, { params })
+  return api
+    .get<WorksResponse>(url.value, { params })
     .then((response) => {
       const data = response.data;
-      if ('works' in data && 'pagination' in data) {
-        works.value = params.page === 1 ? data.works.concat() : works.value.concat(data.works);
-        pagination.value = data.pagination;
-        if (works.value.length >= pagination.value.totalCount) stopLoad.value = true;
-      }
+      works.value = params.page === 1 ? data.works.concat() : works.value.concat(data.works);
+      pagination.value = data.pagination;
+      if (works.value.length >= pagination.value.totalCount) stopLoad.value = true;
     })
-    .catch((error) => {
-      if (error.response && error.response.status !== 401) {
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      if (err.response && err.response.status !== 401) {
         showErrNotif(
-          error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+          err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
         );
-      } else if (!error.response) showErrNotif(error.message || error);
+      } else if (!err.response) showErrNotif(err.message || String(error));
       stopLoad.value = true;
     });
 };

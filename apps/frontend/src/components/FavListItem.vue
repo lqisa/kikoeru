@@ -96,11 +96,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, inject } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useQuasar } from 'quasar';
 import { useNotification } from '../composables/useNotification';
+import { useApi } from '../composables/useApi';
 import { useUserStore } from '../stores/user';
-import type { WorkMetadata } from '../types';
+import type { WorkMetadata, ReviewSubmitResponse } from '../types';
 
 interface Props {
   workid: number;
@@ -112,7 +113,7 @@ const props = withDefaults(defineProps<Props>(), { mode: 'review' });
 const emit = defineEmits<{ (e: 'reset'): void }>();
 
 const $q = useQuasar();
-const $axios = inject<any>('axios')!;
+const api = useApi();
 const { showSuccNotif, showErrNotif } = useNotification();
 const userStore = useUserStore();
 
@@ -174,23 +175,19 @@ const setProgress = (newProgress: string) => {
 };
 
 const submitApiCall = (payload: Record<string, unknown>, params?: Record<string, unknown>) => {
-  void $axios
-    .put('/api/review', payload, { params: params || {} })
-    .then((response: { data: { message: string } }) => {
+  void api
+    .put<ReviewSubmitResponse>('/api/review', payload, { params: params || {} })
+    .then((response) => {
       showSuccNotif(response.data.message);
     })
     .then(() => emit('reset'))
-    .catch(
-      (error: {
-        response?: { status?: number; data?: { error?: string }; statusText?: string };
-        message?: string;
-      }) => {
-        if (error.response)
-          showErrNotif(
-            error.response.data?.error || `${error.response.status} ${error.response.statusText}`,
-          );
-        else showErrNotif(error.message || String(error));
-      },
-    );
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      if (err.response)
+        showErrNotif(
+          err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
+        );
+      else showErrNotif(err.message || String(error));
+    });
 };
 </script>

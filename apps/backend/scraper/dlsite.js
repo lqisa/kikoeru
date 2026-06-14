@@ -51,7 +51,22 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
       const $ = cheerio.load(data)
 
       // cover fallback
-      work.coverURL = $('meta[name="twitter:image:src"]').attr('content')
+      const candidateStr = $('.work_slider_container .slider_item.active img-with-fallback').attr(':candidates')
+      const imgList = candidateStr
+        ? candidateStr.replace(/[\['\]\s]/g, '').split(',').filter(Boolean)
+        : []
+      const fallbackImg = $("meta[itemprop='image']").attr('content') || ''
+      const twitterImg = $('meta[name="twitter:image:src"]').attr('content') || ''
+
+      let coverURL = ''
+      if (imgList.length > 0) {
+        coverURL = imgList[0].startsWith('//') ? `https:${imgList[0]}` : imgList[0]
+      } else if (fallbackImg) {
+        coverURL = fallbackImg.startsWith('//') ? `https:${fallbackImg}` : fallbackImg
+      } else if (twitterImg) {
+        coverURL = twitterImg.startsWith('//') ? `https:${twitterImg}` : twitterImg
+      }
+      work.coverURL = coverURL
 
       // 标题
       work.title = $('meta[property="og:title"]').attr('content')
@@ -71,6 +86,22 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
       work.circle = (circleUrl && circleName)
         ? { id: parseInt(circleUrl.substr(-10, 5)), name: circleName }
         : {}
+
+      // 没有社团时尝试用作者作为社团
+      if (!work.circle.id) {
+        const authorElement = $('#work_outline th')
+          .filter(function () { return $(this).text().trim() === '作者' })
+          .parent().children('td').children('a').first()
+        const authorName = authorElement.text().trim()
+        if (authorName) {
+          let hash = 0
+          for (let i = 0; i < authorName.length; i++) {
+            hash = ((hash << 5) - hash) + authorName.charCodeAt(i)
+            hash |= 0
+          }
+          work.circle = { id: Math.abs(hash), name: authorName }
+        }
+      }
 
       const workOutline = $('#work_outline')
       // NSFW
@@ -154,8 +185,8 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
 
             resolve(work)
           })
-          .catch((error) => {
-            reject(new Error(error.message))
+          .catch(() => {
+            resolve(work)
           })
       } else {
         resolve(work)

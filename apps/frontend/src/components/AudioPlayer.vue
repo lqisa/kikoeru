@@ -70,7 +70,7 @@
               color="white"
               text-color="dark"
               style="opacity: 0.8"
-              @click="swapSeekButton ? forward(true) : nextTrack()"
+              @click="swapSeekButton ? nextTrack() : forward(true)"
               :icon="swapSeekButton ? 'skip_next' : forwardIcon"
             />
           </div>

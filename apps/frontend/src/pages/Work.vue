@@ -1,22 +1,21 @@
 <template>
   <div>
-    <WorkDetails :metadata="metadata" @reset="requestData()" />
+    <WorkDetails :metadata="metadata" :work-dir="workDir" @reset="requestData()" />
     <WorkTree :tree="tree" :editable="false" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, inject } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import WorkDetails from 'components/WorkDetails.vue';
 import WorkTree from 'components/WorkTree.vue';
 import { useNotification } from '../composables/useNotification';
-import type { WorkMetadata, TreeItem } from '../types';
+import { useApi } from '../composables/useApi';
+import type { WorkMetadata, TreeItem, AdminConfigResponse } from '../types';
 
 const route = useRoute();
-const $axios = inject<{
-  get: (url: string) => Promise<{ data: WorkMetadata | TreeItem[] }>;
-}>('axios')!;
+const api = useApi();
 const { showErrNotif } = useNotification();
 
 const workid = ref(route.params.id);
@@ -35,35 +34,56 @@ const metadata = ref<WorkMetadata>({
   vas: [],
 });
 const tree = ref<TreeItem[]>([]);
+const workDir = ref('');
+
+const fetchWorkDir = () => {
+  if (!metadata.value.root_folder || !metadata.value.dir) return;
+  api
+    .get<AdminConfigResponse>('/api/config/admin')
+    .then((response) => {
+      const rootFolder = response.data.config.rootFolders?.find(
+        (rf) => rf.name === metadata.value.root_folder,
+      );
+      if (rootFolder) {
+        const dir = metadata.value.dir || '';
+        const sep = rootFolder.path.includes('\\') ? '\\' : '/';
+        workDir.value = rootFolder.path + (dir ? sep + dir.replace(/[/\\]/g, sep) : '');
+      }
+    })
+    .catch(() => {});
+};
 
 const requestData = () => {
-  $axios
-    .get(`/api/work/${workid.value}`)
+  api
+    .get<WorkMetadata>(`/api/work/${workid.value}`)
     .then((response) => {
-      metadata.value = response.data as WorkMetadata;
+      metadata.value = response.data;
+      fetchWorkDir();
     })
-    .catch((error) => {
-      if (error.response) {
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      if (err.response) {
         showErrNotif(
-          error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+          err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
         );
       } else {
-        showErrNotif(error.message || error);
+        showErrNotif(err.message || String(error));
       }
     });
 
-  $axios
-    .get(`/api/tracks/${workid.value}`)
+  api
+    .get<TreeItem[]>(`/api/tracks/${workid.value}`)
     .then((response) => {
-      tree.value = response.data as TreeItem[];
+      tree.value = response.data;
     })
-    .catch((error) => {
-      if (error.response) {
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      if (err.response) {
         showErrNotif(
-          error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+          err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
         );
       } else {
-        showErrNotif(error.message || error);
+        showErrNotif(err.message || String(error));
       }
     });
 };

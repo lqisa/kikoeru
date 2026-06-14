@@ -40,14 +40,17 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, onMounted, inject } from 'vue';
+import { ref, onMounted } from 'vue';
+import { useApi } from '../../composables/useApi';
 import { useNotification } from '../../composables/useNotification';
-const $axios = inject<any>('axios')!;
+import type { AdminConfigResponse } from '../../types';
+
+const api = useApi();
 const { showSuccNotif } = useNotification();
 const rewind = ref(5);
 const forward = ref(30);
 const onSubmit = () => {
-  $axios
+  api
     .put('/api/config/admin', {
       config: { rewindSeekTime: rewind.value, forwardSeekTime: forward.value },
     })
@@ -55,7 +58,7 @@ const onSubmit = () => {
 };
 onMounted(async () => {
   try {
-    const r = await $axios.get('/api/config/admin');
+    const r = await api.get<AdminConfigResponse>('/api/config/admin');
     if (r.data && r.data.config) {
       const d = r.data.config;
       if (d.rewindSeekTime) rewind.value = d.rewindSeekTime;

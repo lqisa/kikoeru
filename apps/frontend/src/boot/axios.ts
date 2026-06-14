@@ -1,5 +1,5 @@
 import { boot } from 'quasar/wrappers';
-import axios from 'axios';
+import axios, { type AxiosInstance } from 'axios';
 import { LocalStorage } from 'quasar';
 
 axios.defaults.headers['Content-Type'] = 'application/json';
@@ -14,5 +14,5 @@ export function setAxiosHeaders(token: string) {
 
 export default boot(({ app }) => {
   app.config.globalProperties.$axios = axios;
-  app.provide('axios', axios);
+  app.provide<AxiosInstance>('axios', axios);
 });

@@ -22,25 +22,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, inject } from 'vue';
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { setAxiosHeaders } from '../boot/axios';
 import { useNotification } from '../composables/useNotification';
+import { useApi } from '../composables/useApi';
+import type { AuthResponse } from '../types';
 
 const router = useRouter();
 const $q = useQuasar();
-const $axios = inject<{
-  post: (url: string, data: unknown) => Promise<{ data: { token: string } }>;
-}>('axios')!;
+const api = useApi();
 const { showSuccNotif, showWarnNotif, showErrNotif } = useNotification();
 
 const name = ref('');
 const password = ref('');
 
 const onSubmit = () => {
-  $axios
-    .post('/api/auth/me', { name: name.value, password: password.value })
+  api
+    .post<AuthResponse>('/api/auth/me', { name: name.value, password: password.value })
     .then((res) => {
       try {
         $q.localStorage.set('jwt-token', res.data.token);
@@ -51,17 +51,18 @@ const onSubmit = () => {
         showErrNotif((error as Error).message);
       }
     })
-    .catch((error) => {
-      if (error.response) {
-        if (error.response.status === 401) {
-          showWarnNotif(error.response.data.error);
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      if (err.response) {
+        if (err.response.status === 401) {
+          showWarnNotif(err.response.data?.error || '');
         } else {
           showErrNotif(
-            error.response.data.error || `${error.response.status} ${error.response.statusText}`,
+            err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
           );
         }
       } else {
-        showErrNotif(error.message || error);
+        showErrNotif(err.message || String(error));
       }
     });
 };

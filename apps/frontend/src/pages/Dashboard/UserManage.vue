@@ -15,19 +15,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, inject } from 'vue';
+import { ref, onMounted } from 'vue';
+import { useApi } from '../../composables/useApi';
+import type { UsersResponse, UserInfo } from '../../types';
 
-const $axios = inject<any>('axios')!;
-const users = ref<any[]>([]);
+const api = useApi();
+const users = ref<UserInfo[]>([]);
 
 onMounted(() => {
-  $axios
-    .get('/api/credentials/users')
-    .then((r: any) => {
+  api
+    .get<UsersResponse>('/api/credentials/users')
+    .then((r) => {
       users.value = r.data.users || [];
     })
-    .catch((error: any) => {
-      console.error('获取用户列表失败:', error);
+    .catch((error: unknown) => {
+      const err = error as { response?: { status?: number; data?: { error?: string }; statusText?: string }; message?: string };
+      console.error('获取用户列表失败:', err.message || error);
     });
 });
 </script>
