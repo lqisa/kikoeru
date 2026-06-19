@@ -8,7 +8,7 @@ exports.up = function (knex) {
     .createTable('t_subtitle_mapping', (table) => {
       table.increments()
       table.string('work_id').notNullable()
-      table.string('audio_filename').notNullable()
+      table.string('audio_filename').nullable()
       table.string('subtitle_filename').notNullable()
       table.integer('subtitle_folder_id').unsigned().nullable()
       table.string('subtitle_type').notNullable()
