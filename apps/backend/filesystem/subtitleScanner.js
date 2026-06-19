@@ -45,9 +45,11 @@ const scan = async () => {
 
   try {
     const folders = await knex('t_subtitle_folder').select('*')
+    console.log(`[subtitleScanner] 开始扫描, 共 ${folders.length} 个字幕目录`)
 
     for (const folder of folders) {
       if (!fs.existsSync(folder.path)) {
+        console.warn(`[subtitleScanner] 目录不可访问: ${folder.path}`)
         process.send({ event: 'SUBTITLE_SCAN_PROGRESS', payload: { message: `目录不可访问: ${folder.path}` } })
         continue
       }
@@ -68,6 +70,7 @@ const scan = async () => {
 
         const work = await knex('t_work').select('id', 'root_folder', 'dir').where('id', numericId).first()
         if (!work) {
+          console.warn(`[subtitleScanner] 数据库中未找到作品: ${workDir.name}`)
           process.send({ event: 'SUBTITLE_SCAN_PROGRESS', payload: { message: `数据库中未找到作品: ${workDir.name}` } })
           continue
         }
@@ -134,11 +137,13 @@ const scan = async () => {
       event: 'SUBTITLE_SCAN_FINISHED',
       payload: { message: '字幕扫描完成.', added, removed }
     })
+    console.log(`[subtitleScanner] 扫描完成, 新增: ${added}, 移除: ${removed}`)
   } catch (err) {
     process.send({
       event: 'SUBTITLE_SCAN_ERROR',
       payload: { message: `字幕扫描失败: ${err.message}` }
     })
+    console.error(`[subtitleScanner] 扫描失败:`, err)
   }
 
   process.exit(0)

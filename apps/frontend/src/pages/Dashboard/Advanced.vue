@@ -91,19 +91,31 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useApi } from '../../composables/useApi';
 import { useNotification } from '../../composables/useNotification';
+import { useSocket } from '../../composables/useSocket';
 import FolderBrowser from '../../components/FolderBrowser.vue';
 import type { AdminConfigResponse, SubtitleFolder } from '../../types';
 
 const api = useApi();
 const { showSuccNotif, showErrNotif } = useNotification();
+const { registerEvent } = useSocket();
 const rewind = ref(5);
 const forward = ref(30);
 const subtitleFolders = ref<SubtitleFolder[]>([]);
 const scanning = ref(false);
 const showBrowser = ref(false);
+
+registerEvent('SUBTITLE_SCAN_FINISHED', (payload: { message: string; added?: number; removed?: number }) => {
+  scanning.value = false;
+  showSuccNotif(`${payload.message} 新增: ${payload.added ?? 0}, 移除: ${payload.removed ?? 0}`);
+});
+
+registerEvent('SUBTITLE_SCAN_ERROR', (payload: { message: string }) => {
+  scanning.value = false;
+  showErrNotif(payload.message || '字幕扫描失败');
+});
 
 const onSubmit = () => {
   api
