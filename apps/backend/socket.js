@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken')
 const childProcess = require('child_process')
 const { config } = require('./config')
 
-const initSocket = (server) => {
+const initSocket = (server, app) => {
   const io = new Server(server, {
     cors: {
       origin: '*',
@@ -91,10 +91,31 @@ const initSocket = (server) => {
       })
     })
 
+    socket.on('PERFORM_SUBTITLE_SCAN', () => {
+      const subtitleScanner = childProcess.fork(path.join(__dirname, './filesystem/subtitleScanner.js'), { silent: false })
+      subtitleScanner.on('exit', (code) => {
+        if (code) {
+          io.emit('SUBTITLE_SCAN_ERROR', { message: '字幕扫描进程异常退出.' })
+        }
+      })
+
+      subtitleScanner.on('message', (m) => {
+        if (m.event) {
+          io.emit(m.event, m.payload)
+        }
+      })
+    })
+
     socket.on('error', (err) => {
       console.error(err)
     })
   })
+
+  if (app) {
+    app.set('io', io)
+  }
+
+  return io
 }
 
 module.exports = initSocket

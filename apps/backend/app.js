@@ -130,9 +130,9 @@ if (config.httpsEnabled) {
 }
 
 // websocket 握手依赖 http 服务
-initSocket(server)
+initSocket(server, app)
 if (config.httpsEnabled) {
-  initSocket(httpsServer)
+  initSocket(httpsServer, app)
 }
 
 const listenPort = process.env.PORT || config.listenPort || 8888
