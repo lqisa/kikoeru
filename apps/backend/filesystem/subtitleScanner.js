@@ -4,7 +4,13 @@ const { knex } = require('../database/db')
 const { matchSubtitles } = require('./subtitleMatcher')
 
 const SUBTITLE_EXTENSIONS = new Set(['.lrc', '.vtt'])
-const WORK_ID_PATTERN = /^(RJ|VJ)\d+$/i
+const WORK_ID_PATTERN = /^(RJ|VJ)(\d+)$/i
+
+const stripPrefix = (dirName) => {
+  const m = dirName.match(WORK_ID_PATTERN)
+  if (!m) return null
+  return m[2]
+}
 
 const scan = async () => {
   let added = 0
@@ -30,7 +36,16 @@ const scan = async () => {
       const workDirs = entries.filter(e => e.isDirectory() && WORK_ID_PATTERN.test(e.name))
 
       for (const workDir of workDirs) {
-        const workId = workDir.name.toUpperCase()
+        const numericId = stripPrefix(workDir.name)
+        if (!numericId) continue
+
+        const work = await knex('t_work').select('id').where('id', numericId).first()
+        if (!work) {
+          process.send({ event: 'SUBTITLE_SCAN_PROGRESS', payload: { message: `数据库中未找到作品: ${workDir.name}` } })
+          continue
+        }
+
+        const workId = work.id
         const fullWorkPath = path.join(folder.path, workDir.name)
 
         let subEntries
@@ -54,9 +69,6 @@ const scan = async () => {
 
         for (const sf of subtitleFiles) {
           if (!existingFiles.has(sf)) {
-            const work = await knex('t_work').select('id').where('id', workId).first()
-            if (!work) continue
-
             const ext = path.extname(sf).toLowerCase()
             const row = {
               work_id: workId,

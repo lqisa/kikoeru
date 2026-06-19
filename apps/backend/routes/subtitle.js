@@ -11,6 +11,15 @@ const { matchSubtitles } = require('../filesystem/subtitleMatcher')
 
 const SUBTITLE_EXTENSIONS = new Set(['.lrc', '.vtt'])
 
+const findWorkDirInFolder = (folderPath, workId) => {
+  const candidates = [`RJ${workId}`, `VJ${workId}`, `rj${workId}`, `vj${workId}`]
+  for (const c of candidates) {
+    const p = path.join(folderPath, c)
+    if (fs.existsSync(p)) return p
+  }
+  return null
+}
+
 const readSubtitleFile = (filePath) => {
   const buffer = fs.readFileSync(filePath)
   const detected = jschardet.detect(buffer)
@@ -51,8 +60,8 @@ const findSubtitlesInLibrary = async (workId, audioFilename) => {
   const results = []
 
   for (const folder of folders) {
-    const workDir = path.join(folder.path, workId)
-    if (!fs.existsSync(workDir)) continue
+    const workDir = findWorkDirInFolder(folder.path, workId)
+    if (!workDir) continue
 
     let entries
     try {
@@ -207,7 +216,9 @@ router.get('/file/:id', (req, res, next) => {
       } else {
         const folder = await knex('t_subtitle_folder').where('id', '=', mapping.subtitle_folder_id).first()
         if (!folder) return res.status(404).send({ error: '字幕目录不存在.' })
-        filePath = path.join(folder.path, mapping.work_id, mapping.subtitle_filename)
+        const workDir = findWorkDirInFolder(folder.path, mapping.work_id)
+        if (!workDir) return res.status(404).send({ error: '字幕作品目录不存在.' })
+        filePath = path.join(workDir, mapping.subtitle_filename)
       }
 
       try {
