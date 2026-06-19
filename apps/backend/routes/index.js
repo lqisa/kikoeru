@@ -17,6 +17,7 @@ router.use('/credentials', require('./credentials'))
 router.use('/version', require('./version'))
 router.use('/config', require('./config'))
 router.use('/media', require('./media'))
+router.use('/subtitle', require('./subtitle'))
 router.use('/review', require('./review'))
 // Other routes
 router.use('/', require('./metadata'))
