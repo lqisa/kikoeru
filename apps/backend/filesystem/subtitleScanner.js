@@ -1,15 +1,42 @@
 const fs = require('fs')
 const path = require('path')
 const { knex } = require('../database/db')
+const { config } = require('../config')
 const { matchSubtitles } = require('./subtitleMatcher')
 
 const SUBTITLE_EXTENSIONS = new Set(['.lrc', '.vtt'])
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.ogg', '.opus', '.wav', '.aac', '.flac', '.webm', '.mp4', '.m4a'])
 const WORK_ID_PATTERN = /^(RJ|VJ)(\d+)$/i
 
 const stripPrefix = (dirName) => {
   const m = dirName.match(WORK_ID_PATTERN)
   if (!m) return null
   return m[2]
+}
+
+const getAudioFilesForWork = (work) => {
+  const rootFolder = config.rootFolders.find(rf => rf.name === work.root_folder)
+  if (!rootFolder) return []
+
+  const workDir = path.join(rootFolder.path, work.dir)
+  if (!fs.existsSync(workDir)) return []
+
+  const walkDir = (dir) => {
+    let results = []
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+          results.push(entry.name)
+        } else if (entry.isDirectory()) {
+          results = results.concat(walkDir(path.join(dir, entry.name)))
+        }
+      }
+    } catch (_) {}
+    return results
+  }
+
+  return walkDir(workDir)
 }
 
 const scan = async () => {
@@ -39,7 +66,7 @@ const scan = async () => {
         const numericId = stripPrefix(workDir.name)
         if (!numericId) continue
 
-        const work = await knex('t_work').select('id').where('id', numericId).first()
+        const work = await knex('t_work').select('id', 'root_folder', 'dir').where('id', numericId).first()
         if (!work) {
           process.send({ event: 'SUBTITLE_SCAN_PROGRESS', payload: { message: `数据库中未找到作品: ${workDir.name}` } })
           continue
@@ -59,20 +86,38 @@ const scan = async () => {
           .filter(e => e.isFile() && SUBTITLE_EXTENSIONS.has(path.extname(e.name).toLowerCase()))
           .map(e => e.name)
 
-        const existingMappings = await knex('t_subtitle_mapping')
+        if (subtitleFiles.length === 0) continue
+
+        const audioFiles = getAudioFilesForWork(work)
+
+        await knex('t_subtitle_mapping')
           .where('work_id', workId)
           .where('subtitle_folder_id', folder.id)
-          .select('*')
+          .del()
+        removed += 0
 
-        const existingFiles = new Set(existingMappings.map(m => m.subtitle_filename))
-        const currentFiles = new Set(subtitleFiles)
-
-        for (const sf of subtitleFiles) {
-          if (!existingFiles.has(sf)) {
+        if (audioFiles.length > 0) {
+          for (const audioFile of audioFiles) {
+            const matches = matchSubtitles(audioFile, subtitleFiles)
+            for (const m of matches) {
+              const row = {
+                work_id: workId,
+                audio_filename: audioFile,
+                subtitle_filename: m.subtitleFilename,
+                subtitle_folder_id: folder.id,
+                subtitle_type: m.subtitleType,
+                confidence: m.confidence
+              }
+              await knex('t_subtitle_mapping').insert(row)
+              added++
+            }
+          }
+        } else {
+          for (const sf of subtitleFiles) {
             const ext = path.extname(sf).toLowerCase()
             const row = {
               work_id: workId,
-              audio_filename: sf,
+              audio_filename: null,
               subtitle_filename: sf,
               subtitle_folder_id: folder.id,
               subtitle_type: ext === '.lrc' ? 'lrc' : 'vtt',
@@ -80,13 +125,6 @@ const scan = async () => {
             }
             await knex('t_subtitle_mapping').insert(row)
             added++
-          }
-        }
-
-        for (const existing of existingMappings) {
-          if (!currentFiles.has(existing.subtitle_filename)) {
-            await knex('t_subtitle_mapping').where('id', existing.id).del()
-            removed++
           }
         }
       }
