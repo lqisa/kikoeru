@@ -50,6 +50,13 @@
                 <q-item-section avatar><!-- placeholder --></q-item-section>
                 <q-item-section>打开作品详情</q-item-section>
               </q-item>
+
+              <q-item clickable v-ripple @click="toggleSubtitle()">
+                <q-item-section avatar>
+                  <q-icon :name="subtitleStore.visible ? 'done' : ''" />
+                </q-item-section>
+                <q-item-section>{{ subtitleStore.visible ? '关闭字幕' : '显示字幕' }}</q-item-section>
+              </q-item>
             </q-menu>
           </q-btn>
           <div class="row absolute q-pl-md q-pr-md col-12 justify-between">
@@ -262,6 +269,7 @@
         </q-list>
       </q-card>
     </q-dialog>
+    <SubtitlePanel />
   </div>
 </template>
 
@@ -271,7 +279,9 @@ import { useRouter, useRoute } from 'vue-router';
 import { useQuasar } from 'quasar';
 import draggable from 'vuedraggable';
 import AudioElement from 'components/AudioElement.vue';
+import SubtitlePanel from 'components/SubtitlePanel.vue';
 import { useAudioPlayerStore } from '../stores/audioPlayer';
+import { useSubtitleStore } from '../stores/subtitle';
 import type { AudioTrack } from '../types/audio';
 import { formatSeconds } from '../utils/audio';
 
@@ -279,6 +289,7 @@ const router = useRouter();
 const route = useRoute();
 const $q = useQuasar();
 const store = useAudioPlayerStore();
+const subtitleStore = useSubtitleStore();
 
 // Refs
 const audioElement = ref<{ seek: (seconds: number) => void }>();
@@ -463,6 +474,17 @@ const openWorkDetail = () => {
   }
   if ($q.screen.lt.sm) {
     toggleHide();
+  }
+};
+
+const toggleSubtitle = () => {
+  subtitleStore.TOGGLE_VISIBLE();
+  if (subtitleStore.visible && currentPlayingFile.value.hash) {
+    const workId = currentPlayingFile.value.hash?.split('/')[0] || '';
+    const audioFilename = currentPlayingFile.value.title || '';
+    if (workId && audioFilename) {
+      subtitleStore.FETCH_MAPPINGS({ workId, audioFilename });
+    }
   }
 };
 

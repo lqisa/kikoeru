@@ -57,3 +57,10 @@ export type {
   ScanTask,
   ScanResult,
 } from './socket';
+export type {
+  SubtitleFolder,
+  SubtitleMapping,
+  SubtitleMappingResponse,
+  SubtitleFoldersResponse,
+  VttCue,
+} from './subtitle';
