@@ -54,7 +54,7 @@
               <q-tooltip>撤销跳转</q-tooltip>
             </q-btn>
             <q-btn
-              v-if="subtitleStore.mappings.length > 1"
+              v-if="subtitleStore.visible"
               dense
               round
               size="md"
@@ -683,6 +683,19 @@ onMounted(() => {
   }
   queueCopy.value = store.queue.concat();
 });
+
+watch(
+  () => store.currentPlayingFile.hash,
+  (newHash) => {
+    subtitleStore.SET_SEEK_BEFORE_JUMP(null);
+    if (!subtitleStore.visible || !newHash) return;
+    const workId = newHash.split('/')[0] || '';
+    const audioFilename = store.currentPlayingFile.title || '';
+    if (workId && audioFilename) {
+      subtitleStore.FETCH_MAPPINGS({ workId, audioFilename });
+    }
+  },
+);
 </script>
 
 <style lang="scss" scoped>
