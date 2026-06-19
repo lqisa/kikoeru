@@ -32,21 +32,6 @@ declare module 'vuedraggable' {
   export default draggable;
 }
 
-declare module 'lrc-file-parser' {
-  interface LyricOptions {
-    onPlay?: (line: number, text: string) => void;
-    onSetLyric?: (lines: unknown[]) => void;
-  }
-  class Lyric {
-    constructor(options?: LyricOptions);
-    setLyric(lyric: string): void;
-    play(startTime?: number): void;
-    pause(): void;
-    togglePlay(): void;
-  }
-  export default Lyric;
-}
-
 declare module 'vue' {
   import type { AxiosInstance } from 'axios';
   interface ComponentCustomProperties {

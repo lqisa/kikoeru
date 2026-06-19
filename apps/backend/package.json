@@ -65,6 +65,7 @@
     "express-jwt": "^6.0.0",
     "express-validator": "^7.3.2",
     "htmlparser2": "^4.1.0",
+    "iconv-lite": "^0.7.2",
     "invariant": "^2.2.4",
     "jschardet": "^3.0.0",
     "jsonwebtoken": "^9.0.3",
@@ -85,6 +86,7 @@
     "yargs": "^18.0.0"
   },
   "devDependencies": {
+    "@yao-pkg/pkg": "^6.19.0",
     "chai": "^4.3.4",
     "chai-string": "^1.5.0",
     "cross-env": "^7.0.3",
@@ -97,7 +99,6 @@
     "eslint-plugin-promise": "^6.1.1",
     "mocha": "^8.3.2",
     "nodemon": "^3.0.3",
-    "@yao-pkg/pkg": "^6.19.0",
     "prettier": "3.2.5",
     "serve-index": "^1.9.1"
   },

@@ -38,7 +38,7 @@
       @mouseout="miniState = true"
       mini-to-overlay
       :width="230"
-      :breakpoint="500"
+      :breakpoint="600"
       bordered
       content-class="bg-grey-1"
     >
@@ -141,7 +141,6 @@
     </q-page-container>
 
     <q-footer class="q-pa-none">
-      <LyricsBar />
       <PlayerBar />
     </q-footer>
   </q-layout>
@@ -158,7 +157,6 @@ import { useApi } from '../composables/useApi';
 import type { AuthMeResponse, VersionResponse, SharedConfigResponse, RandomResponse } from '../types';
 import PlayerBar from 'components/PlayerBar.vue';
 import AudioPlayer from 'components/AudioPlayer.vue';
-import LyricsBar from 'components/LyricsBar.vue';
 import SleepMode from 'components/SleepMode.vue';
 
 const router = useRouter();

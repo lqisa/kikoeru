@@ -11,27 +11,17 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useQuasar } from 'quasar';
 import Plyr from 'plyr';
 import 'plyr/dist/plyr.css';
-import Lyric from 'lrc-file-parser';
 import { useAudioPlayerStore } from '../stores/audioPlayer';
-import { useNotification } from '../composables/useNotification';
-import { useApi } from '../composables/useApi';
-import type { LrcCheckResponse } from '../types';
 
 const $q = useQuasar();
-const api = useApi();
 const store = useAudioPlayerStore();
-const { showErrNotif } = useNotification();
 
 const plyrContainer = ref<HTMLDivElement>();
 const audioEl = ref<HTMLAudioElement>();
 let player: Plyr | null = null;
-
-const lrcObj = ref<{
-  setLyric: (lyric: string) => void;
-  play: (time: number) => void;
-  pause: () => void;
-} | null>(null);
-const lrcAvailable = ref(false);
+let audioCtx: AudioContext | null = null;
+let gainNode: GainNode | null = null;
+let sourceNode: MediaElementAudioSourceNode | null = null;
 
 const getToken = (): string => {
   return String($q.localStorage.getItem('jwt-token') || '');
@@ -53,7 +43,6 @@ const initPlayer = () => {
   player = new Plyr(audioEl.value, {
     controls: [],
   });
-
   player.on('canplay', () => {
     if (!player) return;
     store.SET_DURATION(player.duration);
@@ -116,19 +105,40 @@ const initPlayer = () => {
   player.on('seeked', () => {});
 
   player.on('playing', () => {
-    playLrc(true);
+    ensureAudioContext();
     store.PLAY();
   });
 
   player.on('waiting', () => {
-    playLrc(false);
+    ensureAudioContext();
     store.PLAY();
   });
 
   player.on('pause', () => {
-    playLrc(false);
     store.PAUSE();
   });
+};
+
+const ensureAudioContext = () => {
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    return;
+  }
+  if (!audioEl.value) return;
+  try {
+    audioCtx = new AudioContext();
+    sourceNode = audioCtx.createMediaElementSource(audioEl.value);
+    gainNode = audioCtx.createGain();
+    sourceNode.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    applyVolume(store.volume);
+  } catch {
+    audioCtx = null;
+    gainNode = null;
+    sourceNode = null;
+  }
 };
 
 watch(
@@ -136,6 +146,7 @@ watch(
   (flag) => {
     if (!player || !player.duration) return;
     if (flag) {
+      ensureAudioContext();
       player.play();
     } else {
       player.pause();
@@ -146,7 +157,6 @@ watch(
 watch(source, (url) => {
   if (url && audioEl.value) {
     audioEl.value.load();
-    loadLrcFile();
   }
 });
 
@@ -159,13 +169,20 @@ watch(
   },
 );
 
+const applyVolume = (val: number) => {
+  if (gainNode) {
+    gainNode.gain.value = val;
+    if (player) player.volume = Math.min(val, 1);
+  } else if (player) {
+    player.volume = Math.min(val, 1);
+  }
+};
+
 watch(
   () => store.volume,
   (val) => {
-    if (val < 0 || val > 1) return;
-    if (player) {
-      player.volume = val;
-    }
+    if (val < 0 || val > 2) return;
+    applyVolume(val);
   },
 );
 
@@ -191,64 +208,15 @@ watch(
   },
 );
 
-const playLrc = (playStatus: boolean) => {
-  if (lrcAvailable.value && lrcObj.value && player) {
-    if (playStatus) {
-      lrcObj.value.play(player.currentTime * 1000);
-    } else {
-      lrcObj.value.pause();
+watch(
+  () => store.seekTarget,
+  (target) => {
+    if (target !== null && player && player.duration) {
+      player.currentTime = Math.max(0, Math.min(player.duration, target));
+      store.CLEAR_SEEK_TARGET();
     }
-  }
-};
-
-const initLrcObj = () => {
-  lrcObj.value = new Lyric({
-    onPlay: (_line: number, text: string) => {
-      store.SET_CURRENT_LYRIC(text);
-    },
-  });
-};
-
-const loadLrcFile = () => {
-  const token = getToken();
-  const fileHash = store.queue[store.queueIndex]?.hash;
-  if (!fileHash) return;
-  const url = `/api/media/check-lrc/${fileHash}?token=${token}`;
-
-  void api
-    .get<LrcCheckResponse>(url)
-    .then((response) => {
-      if (response.data.result) {
-        lrcAvailable.value = true;
-        const lrcUrl = `/api/media/stream/${response.data.hash}?token=${token}`;
-        void api.get<string>(lrcUrl).then((lrcResponse) => {
-          lrcObj.value?.setLyric(lrcResponse.data);
-          if (player) {
-            lrcObj.value?.play(player.currentTime * 1000);
-          }
-        });
-      } else {
-        lrcAvailable.value = false;
-        lrcObj.value?.setLyric('');
-        store.SET_CURRENT_LYRIC('');
-      }
-    })
-    .catch((error: unknown) => {
-      const err = error as {
-        response?: { status: number; data?: { error?: string }; statusText?: string };
-        message?: string;
-      };
-      if (err.response) {
-        if (err.response.status !== 401) {
-          showErrNotif(
-            err.response.data?.error || `${err.response.status} ${err.response.statusText}`,
-          );
-        }
-      } else {
-        showErrNotif(err.message || 'unknown');
-      }
-    });
-};
+  },
+);
 
 const seek = (seconds: number) => {
   if (player) {
@@ -259,15 +227,23 @@ const seek = (seconds: number) => {
 onMounted(() => {
   initPlayer();
   if (player) {
-    store.SET_VOLUME(player.volume);
-  }
-  initLrcObj();
-  if (source.value) {
-    loadLrcFile();
+    store.SET_VOLUME(player.volume || 1);
   }
 });
 
 onBeforeUnmount(() => {
+  if (sourceNode) {
+    sourceNode.disconnect();
+    sourceNode = null;
+  }
+  if (gainNode) {
+    gainNode.disconnect();
+    gainNode = null;
+  }
+  if (audioCtx) {
+    audioCtx.close();
+    audioCtx = null;
+  }
   if (player) {
     player.destroy();
     player = null;

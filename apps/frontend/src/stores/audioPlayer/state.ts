@@ -15,12 +15,12 @@ export default function (): AudioPlayerState {
     },
     muted: false,
     volume: 0,
-    currentLyric: '',
     sleepTime: null,
     sleepMode: false,
     rewindSeekTime: 5,
     forwardSeekTime: 30,
     rewindSeekMode: false,
     forwardSeekMode: false,
+    seekTarget: null,
   };
 }

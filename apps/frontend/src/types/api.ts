@@ -126,11 +126,6 @@ export type ReviewSubmitResponse = {
   message: string;
 };
 
-export type LrcCheckResponse = {
-  result: boolean;
-  hash?: string;
-};
-
 export type BrowseDirItem = {
   name: string;
   path: string;

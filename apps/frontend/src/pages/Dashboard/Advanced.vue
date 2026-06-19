@@ -91,7 +91,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useApi } from '../../composables/useApi';
 import { useNotification } from '../../composables/useNotification';
 import { useSocket } from '../../composables/useSocket';

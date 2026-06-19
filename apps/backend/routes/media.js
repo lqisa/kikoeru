@@ -125,46 +125,4 @@ router.get('/download/:id/:index',
       })
   })
 
-router.get('/check-lrc/:id/:index',
-  param('id').isInt(),
-  param('index').isInt(),
-  (req, res, next) => {
-    if (!isValidRequest(req, res)) return
-
-    db.knex('t_work')
-      .select('root_folder', 'dir')
-      .where('id', '=', req.params.id)
-      .first()
-      .then((work) => {
-        const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder)
-        if (rootFolder) {
-          getTrackList(req.params.id, path.join(rootFolder.path, work.dir))
-            .then((tracks) => {
-              const track = tracks[req.params.index]
-              const fileLoc = path.join(rootFolder.path, work.dir, track.subtitle || '', track.title)
-              const lrcFileLoc = fileLoc.substr(0, fileLoc.lastIndexOf('.')) + '.lrc'
-
-              if (!fs.existsSync(lrcFileLoc)) {
-                res.send({ result: false, message: '不存在歌词文件', hash: '' })
-              } else {
-                console.log('找到歌词文件')
-                const lrcFileName = track.title.substr(0, track.title.lastIndexOf('.')) + '.lrc'
-                const subtitleToFind = track.subtitle
-                console.log('歌词文件名： ', lrcFileName)
-                // 文件名、子目录名相同
-                tracks.forEach(trackItem => {
-                  if (trackItem.title === lrcFileName && subtitleToFind === trackItem.subtitle) {
-                    res.send({ result: true, message: '找到歌词文件', hash: trackItem.hash })
-                  }
-                })
-              }
-            })
-            .catch(err => next(err))
-        } else {
-          res.status(500).send({ error: `找不到文件夹: "${work.root_folder}"，请尝试重启服务器或重新扫描.` })
-        }
-      })
-      .catch(err => next(err))
-  })
-
 module.exports = router

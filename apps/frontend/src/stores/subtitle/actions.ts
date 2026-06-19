@@ -1,7 +1,23 @@
 import type { SubtitleState } from './state'
 import type { SubtitleMapping, VttCue } from '../../types/subtitle'
 import { parseVtt, parseLrc } from '../../utils/vttParser'
+import { useAudioPlayerStore } from '../audioPlayer'
 import axios from 'axios'
+
+const STORAGE_KEY = 'subtitle-prefs'
+
+function savePrefs(state: SubtitleState) {
+  try {
+    const prefs = {
+      autoScroll: state.autoScroll,
+      fontSizeDesktop: state.fontSizeDesktop,
+      fontSizeMobile: state.fontSizeMobile,
+      panelPos: state.panelPos,
+      panelSize: state.panelSize,
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
+  } catch {}
+}
 
 const actions = {
   TOGGLE_VISIBLE(this: SubtitleState) {
@@ -30,6 +46,51 @@ const actions = {
 
   SET_LOADING(this: SubtitleState, val: boolean) {
     this.loading = val
+  },
+
+  SET_AUTO_SCROLL(this: SubtitleState, val: boolean) {
+    this.autoScroll = val
+    savePrefs(this)
+  },
+
+  SET_FONT_SIZE_DESKTOP(this: SubtitleState, val: number) {
+    this.fontSizeDesktop = val
+    savePrefs(this)
+  },
+
+  SET_FONT_SIZE_MOBILE(this: SubtitleState, val: number) {
+    this.fontSizeMobile = val
+    savePrefs(this)
+  },
+
+  SET_SEEK_BEFORE_JUMP(this: SubtitleState, val: number | null) {
+    this.seekBeforeJump = val
+  },
+
+  SET_PANEL_POS(this: SubtitleState, pos: { x: number; y: number }) {
+    this.panelPos = pos
+    savePrefs(this)
+  },
+
+  SET_PANEL_SIZE(this: SubtitleState, size: { width: number; height: number }) {
+    this.panelSize = size
+    savePrefs(this)
+  },
+
+  SEEK_TO(this: SubtitleState, seconds: number) {
+    const audioStore = useAudioPlayerStore()
+    if (this.seekBeforeJump === null) {
+      this.seekBeforeJump = audioStore.currentTime
+    }
+    audioStore.SEEK_TO(seconds)
+  },
+
+  UNDO_SEEK(this: SubtitleState) {
+    if (this.seekBeforeJump !== null) {
+      const audioStore = useAudioPlayerStore()
+      audioStore.SEEK_TO(this.seekBeforeJump)
+      this.seekBeforeJump = null
+    }
   },
 
   async LOAD_SUBTITLE(this: SubtitleState, mappingId: number) {
@@ -116,6 +177,7 @@ const actions = {
     this.cues = []
     this.subtitleMissing = false
     this.loading = false
+    this.seekBeforeJump = null
   },
 }
 

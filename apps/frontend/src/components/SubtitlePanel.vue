@@ -1,11 +1,10 @@
 <template>
   <q-card
-    v-if="subtitleStore.visible"
+    v-if="subtitleStore.visible && !$q.screen.lt.sm"
     class="subtitle-panel fixed"
     :style="panelStyle"
-    @mousedown="startDrag"
   >
-    <div class="subtitle-header row items-center no-wrap">
+    <div class="subtitle-header row items-center no-wrap" @mousedown="startDrag">
       <q-btn
         dense
         flat
@@ -42,52 +41,138 @@
       </div>
       <q-space />
       <q-btn
+        v-if="subtitleStore.seekBeforeJump !== null"
+        dense
+        flat
+        round
+        size="xs"
+        icon="undo"
+        color="white"
+        class="q-mr-xs"
+        @click.stop="undoSeek"
+      >
+        <q-tooltip>撤销跳转</q-tooltip>
+      </q-btn>
+      <q-btn
+        dense
+        flat
+        round
+        size="xs"
+        icon="more_vert"
+        color="white"
+        class="q-mr-xs"
+      >
+        <q-menu anchor="bottom right" self="top right">
+          <q-item dense>
+            <q-item-section side>
+              <q-toggle
+                dense
+                v-model="autoScrollModel"
+                label="自动滚动"
+                color="teal"
+              />
+            </q-item-section>
+          </q-item>
+          <q-separator />
+          <q-item dense>
+            <q-item-section>
+              <div class="row items-center no-wrap" style="min-width: 160px">
+                <span class="text-caption q-mr-sm" style="min-width: 32px">字号</span>
+                <q-slider
+                  v-model="fontSizeModel"
+                  :min="12"
+                  :max="40"
+                  :step="1"
+                  label
+                  :label-value="fontSizeModel + 'px'"
+                  color="teal"
+                  class="col"
+                />
+              </div>
+            </q-item-section>
+          </q-item>
+        </q-menu>
+      </q-btn>
+      <q-btn
         dense
         flat
         round
         size="xs"
         icon="close"
         color="white"
-        @click="closePanel"
+        @click.stop="closePanel"
       />
     </div>
-    <div class="subtitle-content scroll" ref="contentRef">
-      <div
-        v-for="(cue, idx) in subtitleStore.cues"
-        :key="idx"
-        class="subtitle-line"
-        :class="{ 'subtitle-line-active': isCueActive(cue) }"
-        :ref="(el) => setCueRef(el as HTMLElement, idx)"
-      >
-        {{ cue.text }}
-      </div>
-      <div v-if="subtitleStore.cues.length === 0 && !subtitleStore.loading" class="subtitle-empty">
-        {{ subtitleStore.subtitleMissing ? '字幕库中缺少字幕' : '无字幕' }}
-      </div>
+    <q-virtual-scroll
+      ref="virtualScrollRef"
+      :items="subtitleStore.cues"
+      :virtual-scroll-item-size="estimatedItemSize"
+      class="subtitle-content"
+      separator
+    >
+      <template #default="{ item: cue, index }">
+        <div
+          :key="index"
+          class="subtitle-line"
+          :class="{ 'subtitle-line-active': isCueActive(cue) }"
+          :style="{ fontSize: subtitleStore.fontSizeDesktop + 'px' }"
+          @click="onCueClick(cue)"
+        >
+          {{ cue.text }}
+        </div>
+      </template>
+    </q-virtual-scroll>
+    <div v-if="subtitleStore.cues.length === 0 && !subtitleStore.loading" class="subtitle-empty">
+      {{ subtitleStore.subtitleMissing ? '字幕库中缺少字幕' : '无字幕' }}
     </div>
+    <div class="resize-handle" @mousedown="startResize" />
   </q-card>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
+import { useQuasar } from 'quasar'
 import { useSubtitleStore } from '../stores/subtitle'
 import { useAudioPlayerStore } from '../stores/audioPlayer'
 import type { VttCue } from '../types/subtitle'
 
+const $q = useQuasar()
 const subtitleStore = useSubtitleStore()
 const audioStore = useAudioPlayerStore()
 
-const contentRef = ref<HTMLElement | null>(null)
-const cueRefs = ref<Map<number, HTMLElement>>(new Map())
+const virtualScrollRef = ref<any>(null)
+const lastActiveIdx = ref(-1)
 
-const position = ref({ x: window.innerWidth - 420, y: 20 })
-const dragging = ref(false)
-const dragOffset = ref({ x: 0, y: 0 })
+const position = ref({ ...subtitleStore.panelPos })
+const panelSizeVal = ref({ ...subtitleStore.panelSize })
+
+if (position.value.x === 0 && position.value.y === 0) {
+  position.value = { x: window.innerWidth - panelSizeVal.value.width - 40, y: 20 }
+}
+
+const minWidth = 280
+const minHeight = 120
+
+const estimatedItemSize = computed(() => {
+  return Math.ceil(subtitleStore.fontSizeDesktop * 1.6 + 4)
+})
 
 const panelStyle = computed(() => ({
   left: `${position.value.x}px`,
   top: `${position.value.y}px`,
+  width: `${panelSizeVal.value.width}px`,
+  height: `${panelSizeVal.value.height}px`,
 }))
+
+const autoScrollModel = computed({
+  get: () => subtitleStore.autoScroll,
+  set: (val: boolean) => subtitleStore.SET_AUTO_SCROLL(val),
+})
+
+const fontSizeModel = computed({
+  get: () => subtitleStore.fontSizeDesktop,
+  set: (val: number) => subtitleStore.SET_FONT_SIZE_DESKTOP(val),
+})
 
 const activeFilename = computed(() => {
   const mapping = subtitleStore.mappings.find(
@@ -96,56 +181,92 @@ const activeFilename = computed(() => {
   return mapping?.subtitleFilename || ''
 })
 
-const setCueRef = (el: HTMLElement | null, idx: number) => {
-  if (el) cueRefs.value.set(idx, el)
-}
-
 const isCueActive = (cue: VttCue): boolean => {
   const t = audioStore.currentTime
   return t >= cue.startTime && t < cue.endTime
 }
 
-const scrollToActiveCue = () => {
+const scrollToActiveCue = (force = false) => {
+  if (!force && !subtitleStore.autoScroll) return
   const activeIdx = subtitleStore.cues.findIndex(isCueActive)
-  if (activeIdx >= 0 && cueRefs.value.has(activeIdx) && contentRef.value) {
-    const el = cueRefs.value.get(activeIdx)!
-    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }
+  if (activeIdx < 0 || activeIdx === lastActiveIdx.value) return
+  lastActiveIdx.value = activeIdx
+  if (!virtualScrollRef.value) return
+  virtualScrollRef.value.scrollTo(activeIdx, 'center')
 }
 
-watch(() => audioStore.currentTime, scrollToActiveCue)
+const onCueClick = (cue: VttCue) => {
+  subtitleStore.SEEK_TO(cue.startTime)
+  nextTick(() => scrollToActiveCue(true))
+}
+
+const undoSeek = () => {
+  subtitleStore.UNDO_SEEK()
+  nextTick(() => scrollToActiveCue(true))
+}
+
+watch(() => audioStore.currentTime, () => scrollToActiveCue())
 
 watch(
   () => subtitleStore.cues,
   () => {
-    cueRefs.value.clear()
-    nextTick(scrollToActiveCue)
+    lastActiveIdx.value = -1
+    nextTick(() => {
+      if (virtualScrollRef.value) {
+        virtualScrollRef.value.scrollTo(0)
+      }
+      scrollToActiveCue()
+    })
   },
 )
 
+const persistLayout = () => {
+  subtitleStore.SET_PANEL_POS({ ...position.value })
+  subtitleStore.SET_PANEL_SIZE({ ...panelSizeVal.value })
+}
+
 const startDrag = (e: MouseEvent) => {
   const target = e.target as HTMLElement
-  if (target.closest('.subtitle-header') || target.closest('.q-menu')) {
-    dragging.value = true
-    dragOffset.value = {
-      x: e.clientX - position.value.x,
-      y: e.clientY - position.value.y,
+  if (target.closest('.q-btn') || target.closest('.q-menu') || target.closest('.q-toggle') || target.closest('.q-slider')) return
+  const startX = e.clientX
+  const startY = e.clientY
+  const startPos = { ...position.value }
+  const onMove = (ev: MouseEvent) => {
+    position.value = {
+      x: startPos.x + (ev.clientX - startX),
+      y: startPos.y + (ev.clientY - startY),
     }
-    const onMove = (ev: MouseEvent) => {
-      if (!dragging.value) return
-      position.value = {
-        x: ev.clientX - dragOffset.value.x,
-        y: ev.clientY - dragOffset.value.y,
-      }
-    }
-    const onUp = () => {
-      dragging.value = false
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
   }
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    persistLayout()
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
+const startResize = (e: MouseEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  const startX = e.clientX
+  const startY = e.clientY
+  const startSize = { ...panelSizeVal.value }
+  const onMove = (ev: MouseEvent) => {
+    const maxWidth = Math.floor(window.innerWidth * 0.95)
+    const maxHeight = 600
+    panelSizeVal.value = {
+      width: Math.min(maxWidth, Math.max(minWidth, startSize.width + (ev.clientX - startX))),
+      height: Math.min(maxHeight, Math.max(minHeight, startSize.height + (ev.clientY - startY))),
+    }
+  }
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    persistLayout()
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
 }
 
 const selectMapping = (id: number) => {
@@ -159,17 +280,18 @@ const closePanel = () => {
 
 <style scoped>
 .subtitle-panel {
-  width: 380px;
-  max-height: 300px;
   background: rgba(30, 30, 30, 0.85);
   border-radius: 8px;
   z-index: 3000;
   overflow: hidden;
   user-select: none;
+  display: flex;
+  flex-direction: column;
 }
 
 .subtitle-header {
   height: 28px;
+  min-height: 28px;
   background: rgba(0, 0, 0, 0.4);
   cursor: move;
 }
@@ -179,22 +301,24 @@ const closePanel = () => {
 }
 
 .subtitle-content {
-  max-height: 260px;
+  flex: 1;
   padding: 8px 12px;
-  overflow-y: auto;
 }
 
 .subtitle-line {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 13px;
   line-height: 1.6;
   padding: 2px 0;
-  transition: color 0.2s, font-size 0.2s;
+  transition: color 0.2s;
+  cursor: pointer;
+}
+
+.subtitle-line:hover {
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .subtitle-line-active {
   color: #fff;
-  font-size: 14px;
   font-weight: 500;
 }
 
@@ -203,5 +327,31 @@ const closePanel = () => {
   font-size: 12px;
   text-align: center;
   padding: 20px 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 1;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(255, 255, 255, 0.4);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.4);
 }
 </style>

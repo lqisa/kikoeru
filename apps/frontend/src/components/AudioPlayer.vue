@@ -12,6 +12,8 @@
         <!-- 音声封面 -->
         <div class="bg-dark row items-center albumart">
           <q-img contain transition="fade" :src="coverUrl" :ratio="4 / 3" />
+
+          <!-- 左上角按钮组 -->
           <q-btn
             dense
             round
@@ -21,7 +23,72 @@
             icon="keyboard_arrow_down"
             @click="toggleHide()"
             class="absolute-top-left q-ma-sm"
+            style="z-index: 2"
           />
+
+          <!-- 移动端字幕控制按钮组（左上角，最小化按钮旁） -->
+          <template v-if="$q.screen.lt.sm">
+            <q-btn
+              dense
+              round
+              size="md"
+              flat
+              :icon="subtitleStore.visible ? 'closed_caption' : 'closed_caption_off'"
+              @click="toggleSubtitle()"
+              class="absolute-top-left q-mt-sm q-ml-sm text-white"
+              style="left: 52px; z-index: 2"
+            >
+              <q-tooltip>{{ subtitleStore.visible ? '关闭字幕' : '显示字幕' }}</q-tooltip>
+            </q-btn>
+            <q-btn
+              v-if="subtitleStore.seekBeforeJump !== null"
+              dense
+              round
+              size="md"
+              flat
+              icon="undo"
+              @click="subtitleStore.UNDO_SEEK()"
+              class="absolute-top-left q-mt-sm q-ml-sm text-white"
+              style="left: 92px; z-index: 2"
+            >
+              <q-tooltip>撤销跳转</q-tooltip>
+            </q-btn>
+            <q-btn
+              v-if="subtitleStore.mappings.length > 1"
+              dense
+              round
+              size="md"
+              flat
+              icon="swap_horiz"
+              class="absolute-top-left q-mt-sm q-ml-sm text-white"
+              :style="{ left: subtitleStore.seekBeforeJump !== null ? '132px' : '92px', zIndex: 2 }"
+            >
+              <q-tooltip>切换字幕</q-tooltip>
+              <q-menu anchor="bottom left" self="top left">
+                <q-list dense style="min-width: 120px">
+                  <q-item
+                    v-for="m in subtitleStore.mappings"
+                    :key="m.id"
+                    clickable
+                    v-ripple
+                    :active="m.id === subtitleStore.activeMappingId"
+                    active-class="bg-teal text-white"
+                    @click="subtitleStore.LOAD_SUBTITLE(m.id)"
+                  >
+                    <q-item-section side>
+                      <q-badge
+                        :color="m.subtitleType === 'lrc' ? 'blue' : 'orange'"
+                        :label="m.subtitleType.toUpperCase()"
+                      />
+                    </q-item-section>
+                    <q-item-section>{{ m.subtitleFilename }}</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </q-btn>
+          </template>
+
+          <!-- 右上角菜单 -->
           <q-btn
             dense
             round
@@ -30,6 +97,7 @@
             text-color="dark"
             icon="more_vert"
             class="absolute-top-right q-ma-sm"
+            style="z-index: 2"
           >
             <q-menu anchor="bottom right" self="top right">
               <q-item clickable v-ripple @click="hideSeekButton = !hideSeekButton">
@@ -51,15 +119,50 @@
                 <q-item-section>打开作品详情</q-item-section>
               </q-item>
 
-              <q-item clickable v-ripple @click="toggleSubtitle()">
+              <!-- 桌面端：字幕开关在菜单中 -->
+              <q-item v-if="!$q.screen.lt.sm" clickable v-ripple @click="toggleSubtitle()">
                 <q-item-section avatar>
                   <q-icon :name="subtitleStore.visible ? 'done' : ''" />
                 </q-item-section>
                 <q-item-section>{{ subtitleStore.visible ? '关闭字幕' : '显示字幕' }}</q-item-section>
               </q-item>
+
+              <!-- 移动端：自动滚动和字号在菜单中 -->
+              <template v-if="$q.screen.lt.sm && subtitleStore.visible">
+                <q-separator />
+                <q-item dense>
+                  <q-item-section side>
+                    <q-toggle
+                      dense
+                      v-model="autoScrollModel"
+                      label="自动滚动"
+                      color="teal"
+                    />
+                  </q-item-section>
+                </q-item>
+                <q-item dense>
+                  <q-item-section>
+                    <div class="row items-center no-wrap" style="min-width: 160px">
+                      <span class="text-caption q-mr-sm" style="min-width: 32px">字号</span>
+                      <q-slider
+                        v-model="fontSizeModel"
+                        :min="12"
+                        :max="40"
+                        :step="1"
+                        label
+                        :label-value="fontSizeModel + 'px'"
+                        color="teal"
+                        class="col"
+                      />
+                    </div>
+                  </q-item-section>
+                </q-item>
+              </template>
             </q-menu>
           </q-btn>
-          <div class="row absolute q-pl-md q-pr-md col-12 justify-between">
+
+          <!-- 封面中间按钮 -->
+          <div class="row absolute q-pl-md q-pr-md col-12 justify-between" style="z-index: 1">
             <q-btn
               v-if="!hideSeekButton"
               round
@@ -80,6 +183,33 @@
               @click="swapSeekButton ? nextTrack() : forward(true)"
               :icon="swapSeekButton ? 'skip_next' : forwardIcon"
             />
+          </div>
+
+          <!-- 移动端字幕覆盖层（在封面区域内） -->
+          <div
+            v-if="$q.screen.lt.sm && subtitleStore.visible"
+            class="mobile-subtitle-overlay"
+            @touchmove.stop
+          >
+            <q-virtual-scroll
+              ref="mobileVirtualScrollRef"
+              :items="subtitleStore.cues"
+              :virtual-scroll-item-size="mobileEstimatedItemSize"
+              class="mobile-subtitle-scroll"
+              separator
+            >
+              <template #default="{ item: cue, index }">
+                <div
+                  :key="index"
+                  class="mobile-subtitle-line"
+                  :class="{ 'mobile-subtitle-line-active': isMobileCueActive(cue) }"
+                  :style="{ fontSize: subtitleStore.fontSizeMobile + 'px' }"
+                  @click="onMobileCueClick(cue)"
+                >
+                  {{ cue.text }}
+                </div>
+              </template>
+            </q-virtual-scroll>
           </div>
         </div>
 
@@ -170,9 +300,10 @@
             :model-value="store.volume"
             @update:model-value="(val: number | null) => val !== null && setVolume(val)"
             :min="0"
-            :max="1"
+            :max="2"
             :step="0.01"
             label-always
+            :label-value="Math.round(store.volume * 100) + '%'"
             color="primary"
             class="col"
           />
@@ -180,6 +311,9 @@
         </div>
       </q-card>
     </q-slide-transition>
+
+    <!-- 桌面端浮动字幕窗口 + 移动端封面覆盖层 -->
+    <SubtitlePanel />
 
     <!-- 当前播放列表 -->
     <q-dialog v-model="showCurrentPlayList">
@@ -269,12 +403,11 @@
         </q-list>
       </q-card>
     </q-dialog>
-    <SubtitlePanel />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue';
+import { computed, ref, watch, onMounted, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useQuasar } from 'quasar';
 import draggable from 'vuedraggable';
@@ -283,6 +416,7 @@ import SubtitlePanel from 'components/SubtitlePanel.vue';
 import { useAudioPlayerStore } from '../stores/audioPlayer';
 import { useSubtitleStore } from '../stores/subtitle';
 import type { AudioTrack } from '../types/audio';
+import type { VttCue } from '../types/subtitle';
 import { formatSeconds } from '../utils/audio';
 
 const router = useRouter();
@@ -291,7 +425,6 @@ const $q = useQuasar();
 const store = useAudioPlayerStore();
 const subtitleStore = useSubtitleStore();
 
-// Refs
 const audioElement = ref<{ seek: (seconds: number) => void }>();
 const showCurrentPlayList = ref(false);
 const editCurrentPlayList = ref(false);
@@ -300,12 +433,27 @@ const hideSeekButton = ref(false);
 const swapSeekButton = ref(false);
 const innerTime = ref(0);
 const isSeeking = ref(false);
+const mobileVirtualScrollRef = ref<any>(null);
+const mobileLastActiveIdx = ref(-1);
 
 const getToken = (): string => {
   return String($q.localStorage.getItem('jwt-token') || '');
 };
 
-// Computed
+const autoScrollModel = computed({
+  get: () => subtitleStore.autoScroll,
+  set: (val: boolean) => subtitleStore.SET_AUTO_SCROLL(val),
+});
+
+const fontSizeModel = computed({
+  get: () => subtitleStore.fontSizeMobile,
+  set: (val: number) => subtitleStore.SET_FONT_SIZE_MOBILE(val),
+});
+
+const mobileEstimatedItemSize = computed(() => {
+  return Math.ceil(subtitleStore.fontSizeMobile * 1.6 + 4);
+});
+
 const coverUrl = computed(() => {
   const token = getToken();
   const hash = store.currentPlayingFile.hash;
@@ -363,7 +511,40 @@ const forwardIcon = computed(() => {
 const currentPlayingFile = computed(() => store.currentPlayingFile);
 const hide = computed(() => store.hide);
 
-// Watchers
+const isMobileCueActive = (cue: VttCue): boolean => {
+  const t = store.currentTime;
+  return t >= cue.startTime && t < cue.endTime;
+};
+
+const onMobileCueClick = (cue: VttCue) => {
+  subtitleStore.SEEK_TO(cue.startTime);
+  nextTick(() => scrollMobileToActiveCue(true));
+};
+
+const scrollMobileToActiveCue = (force = false) => {
+  if ((!force && !subtitleStore.autoScroll) || !$q.screen.lt.sm) return;
+  const activeIdx = subtitleStore.cues.findIndex(isMobileCueActive);
+  if (activeIdx < 0 || activeIdx === mobileLastActiveIdx.value) return;
+  mobileLastActiveIdx.value = activeIdx;
+  if (!mobileVirtualScrollRef.value) return;
+  mobileVirtualScrollRef.value.scrollTo(activeIdx, 'center');
+};
+
+watch(() => store.currentTime, () => scrollMobileToActiveCue());
+
+watch(
+  () => subtitleStore.cues,
+  () => {
+    mobileLastActiveIdx.value = -1;
+    nextTick(() => {
+      if (mobileVirtualScrollRef.value) {
+        mobileVirtualScrollRef.value.scrollTo(0);
+      }
+      scrollMobileToActiveCue();
+    });
+  },
+);
+
 watch(
   () => store.queue,
   (val) => {
@@ -397,7 +578,6 @@ watch(
   },
 );
 
-// Methods
 const toggleHide = () => store.TOGGLE_HIDE();
 const togglePlaying = () => store.TOGGLE_PLAYING();
 const nextTrack = () => store.NEXT_TRACK();
@@ -488,7 +668,6 @@ const toggleSubtitle = () => {
   }
 };
 
-// Lifecycle
 onMounted(() => {
   if ($q.localStorage.has('hideSeekButton')) {
     const hideButton = $q.localStorage.getItem('hideSeekButton');
@@ -508,12 +687,10 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .audio-player {
-  // 宽度 > $breakpoint-sm-min
   @media (min-width: $breakpoint-sm-min) {
     width: 330px;
     margin: 0px 10px 10px 0px;
   }
-  // 宽度 < $breakpoint-xs-max (599px)
   @media (max-width: $breakpoint-xs-max) {
     width: 100%;
     height: 100%;
@@ -521,7 +698,8 @@ onMounted(() => {
 }
 
 .albumart {
-  // 宽度 < $breakpoint-xs-max (599px)
+  position: relative;
+
   @media (max-width: $breakpoint-xs-max) {
     width: 100%;
     height: calc(100% - 230px);
@@ -531,13 +709,47 @@ onMounted(() => {
 .current-play-list {
   max-height: 500px;
 
-  // 宽度 > $breakpoint-xs-max
   @media (min-width: $breakpoint-xs-max) {
     width: 450px;
   }
-  // 宽度 < $breakpoint-xs-max (599px)
   @media (max-width: $breakpoint-xs-max) {
     min-width: 280px;
   }
+}
+
+.mobile-subtitle-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 48px;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 8px 12px;
+  z-index: 1;
+}
+
+.mobile-subtitle-scroll {
+  height: 100%;
+}
+
+.mobile-subtitle-scroll :deep(.q-virtual-scroll__content) {
+  padding: 0 4px;
+}
+
+.mobile-subtitle-line {
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.6;
+  padding: 2px 0;
+  transition: color 0.2s;
+  cursor: pointer;
+}
+
+.mobile-subtitle-line:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.mobile-subtitle-line-active {
+  color: #fff;
+  font-weight: 500;
 }
 </style>

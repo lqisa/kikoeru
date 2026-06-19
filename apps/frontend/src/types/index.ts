@@ -39,7 +39,6 @@ export type {
   UserInfo,
   UsersResponse,
   ReviewSubmitResponse,
-  LrcCheckResponse,
   BrowseDirItem,
   BrowseResponse,
   BrowseFileItem,

@@ -25,11 +25,11 @@ export type AudioPlayerState = {
   playMode: PlayMode;
   muted: boolean;
   volume: number;
-  currentLyric: string;
   sleepTime: string | null;
   sleepMode: boolean;
   rewindSeekTime: number;
   forwardSeekTime: number;
   rewindSeekMode: boolean;
   forwardSeekMode: boolean;
+  seekTarget: number | null;
 };
