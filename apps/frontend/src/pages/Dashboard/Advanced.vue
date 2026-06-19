@@ -86,23 +86,24 @@
     <div class="q-ma-lg row justify-end">
       <q-btn label="保存" color="primary" @click="onSubmit" />
     </div>
+
+    <FolderBrowser v-model="showBrowser" @ok="onFolderSelected" />
   </div>
 </template>
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useQuasar } from 'quasar';
 import { useApi } from '../../composables/useApi';
 import { useNotification } from '../../composables/useNotification';
 import FolderBrowser from '../../components/FolderBrowser.vue';
 import type { AdminConfigResponse, SubtitleFolder } from '../../types';
 
 const api = useApi();
-const $q = useQuasar();
 const { showSuccNotif, showErrNotif } = useNotification();
 const rewind = ref(5);
 const forward = ref(30);
 const subtitleFolders = ref<SubtitleFolder[]>([]);
 const scanning = ref(false);
+const showBrowser = ref(false);
 
 const onSubmit = () => {
   api
@@ -120,18 +121,18 @@ const loadSubtitleFolders = async () => {
 };
 
 const addSubtitleFolder = () => {
-  $q.dialog({
-    component: FolderBrowser,
-  }).onOk(async (path: string) => {
-    try {
-      await api.post('/api/subtitle/folders', { path });
-      showSuccNotif('字幕目录添加成功');
-      await loadSubtitleFolders();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || '添加失败';
-      showErrNotif(msg);
-    }
-  });
+  showBrowser.value = true;
+};
+
+const onFolderSelected = async (dirPath: string) => {
+  try {
+    await api.post('/api/subtitle/folders', { path: dirPath });
+    showSuccNotif('字幕目录添加成功');
+    await loadSubtitleFolders();
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || '添加失败';
+    showErrNotif(msg);
+  }
 };
 
 const removeSubtitleFolder = async (id: number) => {
