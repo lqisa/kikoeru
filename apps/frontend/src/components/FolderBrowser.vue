@@ -25,47 +25,45 @@
 
       <q-separator />
 
-      <q-scroll-area class="col" style="height: 40vh">
-        <q-list>
-          <q-item
-            v-if="currentPath"
-            clickable
-            @click="browse(parentPath)"
-          >
-            <q-item-section avatar>
-              <q-icon name="arrow_upward" />
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>..</q-item-label>
-            </q-item-section>
-          </q-item>
+      <q-virtual-scroll
+        class="col"
+        :items="virtualItems"
+        :virtual-scroll-item-size="48"
+        v-slot="{ item }"
+      >
+        <q-item
+          v-if="item.type === 'parent'"
+          :key="'parent'"
+          clickable
+          @click="browse(parentPath)"
+        >
+          <q-item-section avatar>
+            <q-icon name="arrow_upward" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>..</q-item-label>
+          </q-item-section>
+        </q-item>
 
-          <q-item
-            v-for="dir in dirs"
-            :key="dir.path"
-            clickable
-            @click="browse(dir.path)"
-            @dblclick="selectDir(dir.path)"
-          >
-            <q-item-section avatar>
-              <q-icon color="amber" name="folder" />
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>{{ dir.name }}</q-item-label>
-            </q-item-section>
-          </q-item>
+        <q-item
+          v-else
+          :key="item.path"
+          clickable
+          @click="browse(item.path)"
+          @dblclick="selectDir(item.path)"
+        >
+          <q-item-section avatar>
+            <q-icon color="amber" name="folder" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>{{ item.name }}</q-item-label>
+          </q-item-section>
+        </q-item>
+      </q-virtual-scroll>
 
-          <q-item v-if="!loading && dirs.length === 0">
-            <q-item-section>
-              <q-item-label caption>无子目录</q-item-label>
-            </q-item-section>
-          </q-item>
-        </q-list>
-
-        <q-inner-loading :showing="loading">
-          <q-spinner size="40px" color="primary" />
-        </q-inner-loading>
-      </q-scroll-area>
+      <q-inner-loading :showing="loading">
+        <q-spinner size="40px" color="primary" />
+      </q-inner-loading>
 
       <q-separator />
 
@@ -98,6 +96,22 @@ const { showErrNotif } = useNotification();
 const currentPath = ref('');
 const dirs = ref<BrowseDirItem[]>([]);
 const loading = ref(false);
+
+type VirtualItem = (
+  | { type: 'parent' }
+  | { type: 'dir'; name: string; path: string }
+);
+
+const virtualItems = computed<VirtualItem[]>(() => {
+  const items: VirtualItem[] = [];
+  if (currentPath.value) {
+    items.push({ type: 'parent' });
+  }
+  for (const d of dirs.value) {
+    items.push({ type: 'dir', name: d.name, path: d.path });
+  }
+  return items;
+});
 
 const pathSegments = computed(() => {
   if (!currentPath.value) return [];
