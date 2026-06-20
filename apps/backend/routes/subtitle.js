@@ -20,6 +20,29 @@ const findWorkDirInFolder = (folderPath, workId) => {
   return null
 }
 
+const walkSubtitleFiles = (dir, currentDepth, maxDepth) => {
+  const results = []
+  if (currentDepth > maxDepth) return results
+  let entries
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch (_) {
+    return results
+  }
+  for (const entry of entries) {
+    if (entry.isFile() && SUBTITLE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      results.push({ filename: entry.name, relativePath: '' })
+    } else if (entry.isDirectory() && currentDepth < maxDepth) {
+      const subResults = walkSubtitleFiles(path.join(dir, entry.name), currentDepth + 1, maxDepth)
+      for (const r of subResults) {
+        r.relativePath = r.relativePath ? `${entry.name}/${r.relativePath}` : entry.name
+      }
+      results.push(...subResults)
+    }
+  }
+  return results
+}
+
 const readSubtitleFile = (filePath) => {
   const buffer = fs.readFileSync(filePath)
   const detected = jschardet.detect(buffer)
@@ -40,19 +63,21 @@ const findSubtitlesInWorkDir = async (workId, audioFilename) => {
   const workDir = path.join(rootFolder.path, work.dir)
   if (!fs.existsSync(workDir)) return []
 
-  const entries = fs.readdirSync(workDir, { withFileTypes: true })
-  const subtitleFiles = entries
-    .filter(e => e.isFile() && SUBTITLE_EXTENSIONS.has(path.extname(e.name).toLowerCase()))
-    .map(e => e.name)
+  const subtitleFiles = walkSubtitleFiles(workDir, 1, 3)
 
   if (subtitleFiles.length === 0) return []
 
-  const matches = matchSubtitles(audioFilename, subtitleFiles)
-  return matches.map(m => ({
-    ...m,
-    source: 'local',
-    subtitle_folder_id: null
-  }))
+  const subtitleFilenames = subtitleFiles.map(s => s.filename)
+  const matches = matchSubtitles(audioFilename, subtitleFilenames)
+  return matches.map(m => {
+    const sf = subtitleFiles.find(s => s.filename === m.subtitleFilename)
+    return {
+      ...m,
+      source: 'local',
+      subtitle_folder_id: null,
+      subtitle_relative_path: sf ? sf.relativePath : ''
+    }
+  })
 }
 
 const findSubtitlesInLibrary = async (workId, audioFilename) => {
@@ -63,25 +88,19 @@ const findSubtitlesInLibrary = async (workId, audioFilename) => {
     const workDir = findWorkDirInFolder(folder.path, workId)
     if (!workDir) continue
 
-    let entries
-    try {
-      entries = fs.readdirSync(workDir, { withFileTypes: true })
-    } catch (_) {
-      continue
-    }
-
-    const subtitleFiles = entries
-      .filter(e => e.isFile() && SUBTITLE_EXTENSIONS.has(path.extname(e.name).toLowerCase()))
-      .map(e => e.name)
+    const subtitleFiles = walkSubtitleFiles(workDir, 1, folder.scan_depth || 3)
 
     if (subtitleFiles.length === 0) continue
 
-    const matches = matchSubtitles(audioFilename, subtitleFiles)
+    const subtitleFilenames = subtitleFiles.map(s => s.filename)
+    const matches = matchSubtitles(audioFilename, subtitleFilenames)
     for (const m of matches) {
+      const sf = subtitleFiles.find(s => s.filename === m.subtitleFilename)
       results.push({
         ...m,
         source: 'library',
-        subtitle_folder_id: folder.id
+        subtitle_folder_id: folder.id,
+        subtitle_relative_path: sf ? sf.relativePath : ''
       })
     }
   }
@@ -102,7 +121,8 @@ const performLazyMatch = async (workId, audioFilename) => {
         subtitleFilename: e.subtitle_filename,
         subtitleType: e.subtitle_type,
         confidence: e.confidence,
-        source: e.subtitle_folder_id === null ? 'local' : 'library'
+        source: e.subtitle_folder_id === null ? 'local' : 'library',
+        subtitleRelativePath: e.subtitle_relative_path || ''
       })),
       subtitleMissing: false
     }
@@ -124,6 +144,7 @@ const performLazyMatch = async (workId, audioFilename) => {
     work_id: workId,
     audio_filename: audioFilename,
     subtitle_filename: r.subtitleFilename,
+    subtitle_relative_path: r.subtitle_relative_path || '',
     subtitle_folder_id: r.subtitle_folder_id,
     subtitle_type: r.subtitleType,
     confidence: r.confidence
@@ -142,7 +163,8 @@ const performLazyMatch = async (workId, audioFilename) => {
       subtitleFilename: e.subtitle_filename,
       subtitleType: e.subtitle_type,
       confidence: e.confidence,
-      source: e.subtitle_folder_id === null ? 'local' : 'library'
+      source: e.subtitle_folder_id === null ? 'local' : 'library',
+      subtitleRelativePath: e.subtitle_relative_path || ''
     })),
     subtitleMissing: false
   }
@@ -160,11 +182,12 @@ router.get('/folders', (req, res, next) => {
 
 router.post('/folders', (req, res, next) => {
   if (!config.auth || req.user.name === 'admin') {
-    const { name, path: folderPath } = req.body
+    const { name, path: folderPath, scan_depth } = req.body
     if (!folderPath) {
       return res.status(400).send({ error: '路径不能为空.' })
     }
-    knex('t_subtitle_folder').insert({ name: name || null, path: folderPath })
+    const depth = (typeof scan_depth === 'number' && scan_depth >= 1 && scan_depth <= 10) ? scan_depth : 3
+    knex('t_subtitle_folder').insert({ name: name || null, path: folderPath, scan_depth: depth })
       .then(() => res.send({ message: '添加成功.' }))
       .catch(err => {
         if (err.message && err.message.includes('UNIQUE')) {
@@ -173,6 +196,20 @@ router.post('/folders', (req, res, next) => {
           next(err)
         }
       })
+  } else {
+    res.status(403).send({ error: '只有 admin 账号能管理字幕目录.' })
+  }
+})
+
+router.patch('/folders/:id', (req, res, next) => {
+  if (!config.auth || req.user.name === 'admin') {
+    const { scan_depth } = req.body
+    if (typeof scan_depth !== 'number' || scan_depth < 1 || scan_depth > 10) {
+      return res.status(400).send({ error: 'scan_depth 必须为 1-10 的整数.' })
+    }
+    knex('t_subtitle_folder').where('id', '=', req.params.id).update({ scan_depth })
+      .then(() => res.send({ message: '更新成功.' }))
+      .catch(err => next(err))
   } else {
     res.status(403).send({ error: '只有 admin 账号能管理字幕目录.' })
   }
@@ -212,13 +249,19 @@ router.get('/file/:id', (req, res, next) => {
         if (!work) return res.status(404).send({ error: '作品不存在.' })
         const rootFolder = config.rootFolders.find(rf => rf.name === work.root_folder)
         if (!rootFolder) return res.status(500).send({ error: '找不到根文件夹.' })
-        filePath = path.join(rootFolder.path, work.dir, mapping.subtitle_filename)
+        const localParts = [rootFolder.path, work.dir]
+        if (mapping.subtitle_relative_path) localParts.push(mapping.subtitle_relative_path)
+        localParts.push(mapping.subtitle_filename)
+        filePath = path.join(...localParts)
       } else {
         const folder = await knex('t_subtitle_folder').where('id', '=', mapping.subtitle_folder_id).first()
         if (!folder) return res.status(404).send({ error: '字幕目录不存在.' })
         const workDir = findWorkDirInFolder(folder.path, mapping.work_id)
         if (!workDir) return res.status(404).send({ error: '字幕作品目录不存在.' })
-        filePath = path.join(workDir, mapping.subtitle_filename)
+        const libParts = [workDir]
+        if (mapping.subtitle_relative_path) libParts.push(mapping.subtitle_relative_path)
+        libParts.push(mapping.subtitle_filename)
+        filePath = path.join(...libParts)
       }
 
       try {

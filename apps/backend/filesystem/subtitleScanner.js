@@ -14,6 +14,29 @@ const stripPrefix = (dirName) => {
   return m[2]
 }
 
+const walkSubtitleFiles = (dir, currentDepth, maxDepth) => {
+  const results = []
+  if (currentDepth > maxDepth) return results
+  let entries
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch (_) {
+    return results
+  }
+  for (const entry of entries) {
+    if (entry.isFile() && SUBTITLE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      results.push({ filename: entry.name, relativePath: '' })
+    } else if (entry.isDirectory() && currentDepth < maxDepth) {
+      const subResults = walkSubtitleFiles(path.join(dir, entry.name), currentDepth + 1, maxDepth)
+      for (const r of subResults) {
+        r.relativePath = r.relativePath ? `${entry.name}/${r.relativePath}` : entry.name
+      }
+      results.push(...subResults)
+    }
+  }
+  return results
+}
+
 const getAudioFilesForWork = (work) => {
   const rootFolder = config.rootFolders.find(rf => rf.name === work.root_folder)
   if (!rootFolder) return []
@@ -77,21 +100,14 @@ const scan = async () => {
 
         const workId = work.id
         const fullWorkPath = path.join(folder.path, workDir.name)
+        const maxDepth = folder.scan_depth || 3
 
-        let subEntries
-        try {
-          subEntries = fs.readdirSync(fullWorkPath, { withFileTypes: true })
-        } catch (_) {
-          continue
-        }
-
-        const subtitleFiles = subEntries
-          .filter(e => e.isFile() && SUBTITLE_EXTENSIONS.has(path.extname(e.name).toLowerCase()))
-          .map(e => e.name)
+        const subtitleFiles = walkSubtitleFiles(fullWorkPath, 1, maxDepth)
 
         if (subtitleFiles.length === 0) continue
 
         const audioFiles = getAudioFilesForWork(work)
+        const subtitleFilenames = subtitleFiles.map(s => s.filename)
 
         await knex('t_subtitle_mapping')
           .where('work_id', workId)
@@ -101,12 +117,14 @@ const scan = async () => {
 
         if (audioFiles.length > 0) {
           for (const audioFile of audioFiles) {
-            const matches = matchSubtitles(audioFile, subtitleFiles)
+            const matches = matchSubtitles(audioFile, subtitleFilenames)
             for (const m of matches) {
+              const sf = subtitleFiles.find(s => s.filename === m.subtitleFilename)
               const row = {
                 work_id: workId,
                 audio_filename: audioFile,
                 subtitle_filename: m.subtitleFilename,
+                subtitle_relative_path: sf ? sf.relativePath : '',
                 subtitle_folder_id: folder.id,
                 subtitle_type: m.subtitleType,
                 confidence: m.confidence
@@ -117,11 +135,12 @@ const scan = async () => {
           }
         } else {
           for (const sf of subtitleFiles) {
-            const ext = path.extname(sf).toLowerCase()
+            const ext = path.extname(sf.filename).toLowerCase()
             const row = {
               work_id: workId,
               audio_filename: null,
-              subtitle_filename: sf,
+              subtitle_filename: sf.filename,
+              subtitle_relative_path: sf.relativePath,
               subtitle_folder_id: folder.id,
               subtitle_type: ext === '.lrc' ? 'lrc' : 'vtt',
               confidence: 1.0

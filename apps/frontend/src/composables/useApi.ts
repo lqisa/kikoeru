@@ -10,6 +10,8 @@ export function useApi() {
       axios.post<T>(url, data, config),
     put: <T>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
       axios.put<T>(url, data, config),
+    patch: <T>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+      axios.patch<T>(url, data, config),
     delete: <T>(url: string, config?: AxiosRequestConfig) => axios.delete<T>(url, config),
   };
 }

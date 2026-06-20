@@ -65,14 +65,27 @@
             <q-item-label caption v-if="folder.name">{{ folder.path }}</q-item-label>
           </q-item-section>
           <q-item-section side>
-            <q-btn
-              flat
-              round
-              dense
-              icon="delete"
-              color="red"
-              @click="removeSubtitleFolder(folder.id)"
-            />
+            <div class="row items-center q-gutter-xs">
+              <q-input
+                dense
+                outlined
+                v-model.number="folder.scan_depth"
+                type="number"
+                min="1"
+                max="10"
+                label="深度"
+                style="width: 70px"
+                @blur="updateScanDepth(folder.id, folder.scan_depth)"
+              />
+              <q-btn
+                flat
+                round
+                dense
+                icon="delete"
+                color="red"
+                @click="removeSubtitleFolder(folder.id)"
+              />
+            </div>
           </q-item-section>
         </q-item>
       </q-list>
@@ -154,6 +167,15 @@ const removeSubtitleFolder = async (id: number) => {
     await loadSubtitleFolders();
   } catch {
     showErrNotif('删除失败');
+  }
+};
+
+const updateScanDepth = async (id: number, depth: number) => {
+  const clamped = Math.max(1, Math.min(10, Math.round(depth || 3)));
+  try {
+    await api.patch(`/api/subtitle/folders/${id}`, { scan_depth: clamped });
+  } catch {
+    showErrNotif('更新扫描深度失败');
   }
 };
 

@@ -2,6 +2,7 @@ export type SubtitleFolder = {
   id: number
   name: string | null
   path: string
+  scan_depth: number
 }
 
 export type SubtitleMapping = {
