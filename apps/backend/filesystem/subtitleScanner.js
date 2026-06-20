@@ -104,16 +104,16 @@ const scan = async () => {
 
         const subtitleFiles = walkSubtitleFiles(fullWorkPath, 1, maxDepth)
 
+        const deletedCount = await knex('t_subtitle_mapping')
+          .where('work_id', workId)
+          .where('subtitle_folder_id', folder.id)
+          .del()
+        removed += deletedCount
+
         if (subtitleFiles.length === 0) continue
 
         const audioFiles = getAudioFilesForWork(work)
         const subtitleFilenames = subtitleFiles.map(s => s.filename)
-
-        await knex('t_subtitle_mapping')
-          .where('work_id', workId)
-          .where('subtitle_folder_id', folder.id)
-          .del()
-        removed += 0
 
         if (audioFiles.length > 0) {
           for (const audioFile of audioFiles) {
