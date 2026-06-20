@@ -6,7 +6,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import { useQuasar } from 'quasar';
 import WorkDetails from 'components/WorkDetails.vue';
@@ -54,6 +54,8 @@ const flattenAudioItems = (items: TreeItem[]): TreeItem[] => {
   return result;
 };
 
+let resumeNotif: ReturnType<typeof $q.notify> | null = null;
+
 const checkPlaybackResume = () => {
   const state = getPlaybackState();
   if (!state) return;
@@ -63,7 +65,7 @@ const checkPlaybackResume = () => {
   if (currentTrack?.hash && currentTrack.hash.startsWith(state.workId)) return;
 
   const timeStr = formatTime(state.currentTime);
-  $q.notify({
+  resumeNotif = $q.notify({
     message: `检测到上次播放进度：${state.audioTitle}（${timeStr}）`,
     color: 'dark',
     timeout: 0,
@@ -94,6 +96,7 @@ const resumePlayback = (state: { workId: string; audioTitle: string; currentTime
     $q.notify({ message: '未找到对应音频文件', color: 'warning' });
   }
   clearPlaybackState();
+  resumeNotif = null;
 };
 
 const formatTime = (seconds: number): string => {
@@ -164,4 +167,11 @@ watch(
 );
 
 onMounted(() => requestData());
+
+onBeforeUnmount(() => {
+  if (resumeNotif) {
+    resumeNotif();
+    resumeNotif = null;
+  }
+});
 </script>
