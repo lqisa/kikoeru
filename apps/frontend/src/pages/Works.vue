@@ -108,8 +108,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onActivated, onDeactivated } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, watch, computed, onMounted, onActivated, onDeactivated, nextTick } from 'vue';
+import { useRoute, onBeforeRouteLeave } from 'vue-router';
 import { useQuasar } from 'quasar';
 import WorkCard from 'components/WorkCard.vue';
 import WorkListItem from 'components/WorkListItem.vue';
@@ -122,6 +122,10 @@ const $q = useQuasar();
 const api = useApi();
 const { showErrNotif } = useNotification();
 
+defineOptions({ name: 'Works' });
+
+const savedScrollTop = ref(0);
+const lastLeftTo = ref('');
 const listMode = ref(false);
 const showLabel = ref(true);
 const detailMode = ref(true);
@@ -281,10 +285,20 @@ onMounted(() => {
   if (localStorage.detailMode) detailMode.value = localStorage.detailMode === 'true';
 });
 
+onBeforeRouteLeave((to) => {
+  lastLeftTo.value = to.path;
+});
+
 onActivated(() => {
+  if (lastLeftTo.value.startsWith('/work/')) {
+    nextTick(() => window.scrollTo(0, savedScrollTop.value));
+  } else {
+    reset();
+  }
   stopLoad.value = false;
 });
 onDeactivated(() => {
+  savedScrollTop.value = window.scrollY;
   stopLoad.value = true;
 });
 </script>
